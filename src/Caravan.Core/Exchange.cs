@@ -13,6 +13,7 @@ public sealed class Exchange
 {
     private Message _message;
 
+    /// <summary>Creates an exchange with a new id and an empty message.</summary>
     public Exchange(ICaravanContext context, ExchangePattern pattern = ExchangePattern.InOnly)
     {
         Context = context;
@@ -22,12 +23,16 @@ public sealed class Exchange
         _message = new Message(this);
     }
 
+    /// <summary>The context the exchange belongs to (used for type conversion, time and logging).</summary>
     public ICaravanContext Context { get; }
 
+    /// <summary>The unique id of the exchange; copies made with <see cref="Copy"/> keep it.</summary>
     public string ExchangeId { get; set; }
 
+    /// <summary>Whether a reply is expected (<c>InOut</c>) or not (<c>InOnly</c>).</summary>
     public ExchangePattern Pattern { get; set; }
 
+    /// <summary>When the exchange was created, from the context's <see cref="TimeProvider"/>.</summary>
     public DateTimeOffset Created { get; }
 
     /// <summary>The current message.</summary>
@@ -48,6 +53,7 @@ public sealed class Exchange
     /// <summary>The exception that occurred while routing, if any.</summary>
     public Exception? Exception { get; set; }
 
+    /// <summary>True when <see cref="Exception"/> is set.</summary>
     public bool IsFailed => Exception is not null;
 
     /// <summary>The endpoint that created this exchange (the route's consumer endpoint).</summary>
@@ -68,18 +74,23 @@ public sealed class Exchange
     /// <summary>Unit-of-work hooks executed when the exchange completes.</summary>
     public IUnitOfWork? UnitOfWork { get; set; }
 
+    /// <summary>Gets a property, or null when it is not set.</summary>
     public object? GetProperty(string name) => Properties.TryGetValue(name, out var value) ? value : null;
 
+    /// <summary>Gets a property converted to <typeparamref name="T"/>, or default when it is not set.</summary>
     public T? GetProperty<T>(string name) =>
         Properties.TryGetValue(name, out var value) ? (T?)Context.TypeConverter.Convert(typeof(T), this, value) : default;
 
+    /// <summary>Gets a property converted to <typeparamref name="T"/>, or <paramref name="defaultValue"/> when it is not set or null.</summary>
     public T GetProperty<T>(string name, T defaultValue) =>
         Properties.TryGetValue(name, out var value) && value is not null
             ? (T)Context.TypeConverter.Convert(typeof(T), this, value)!
             : defaultValue;
 
+    /// <summary>Sets a property, replacing any existing value.</summary>
     public void SetProperty(string name, object? value) => Properties[name] = value;
 
+    /// <summary>Removes a property; returns whether it existed.</summary>
     public bool RemoveProperty(string name) => Properties.Remove(name);
 
     /// <summary>Removes properties matching the pattern (wildcard <c>*</c> or regex), except the excluded ones.</summary>
@@ -173,5 +184,6 @@ public sealed class Exchange
         IsRollbackOnly = source.IsRollbackOnly;
     }
 
+    /// <inheritdoc />
     public override string ToString() => $"Exchange[{ExchangeId}]";
 }

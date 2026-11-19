@@ -1,0 +1,27 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+
+[*.{csproj,props,targets,slnx,json,yml,yaml}]
+indent_size = 2
+
+[*.cs]
+# StyleCop.Analyzers: only the file-organisation rules are enforced (see docs/ARCHITECTURE.md, Conventions).
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.DocumentationRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.LayoutRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.MaintainabilityRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.NamingRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.OrderingRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.ReadabilityRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.SpacingRules.severity = none
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.SpecialRules.severity = none
+
+# One type per file.
+dotnet_diagnostic.SA1402.severity = error
+# File name must match the first type name.
+dotnet_diagnostic.SA1649.severity = error

@@ -12,8 +12,10 @@ public interface IEndpoint : IService
     /// <summary>The key used to cache this endpoint in the context.</summary>
     string EndpointKey { get; }
 
+    /// <summary>The context the endpoint belongs to.</summary>
     ICaravanContext Context { get; }
 
+    /// <summary>The component that created the endpoint, if any.</summary>
     IComponent? Component { get; }
 
     /// <summary>Whether one instance of this endpoint is shared for its URI.</summary>
@@ -22,32 +24,12 @@ public interface IEndpoint : IService
     /// <summary>Whether unknown URI parameters are tolerated.</summary>
     bool IsLenientProperties { get; }
 
+    /// <summary>Creates a producer that sends exchanges to this endpoint.</summary>
     IProducer CreateProducer();
 
+    /// <summary>Creates a consumer that feeds exchanges from this endpoint to <paramref name="processor"/>.</summary>
     IConsumer CreateConsumer(IProcessor processor);
 
+    /// <summary>Creates a new exchange from this endpoint.</summary>
     Exchange CreateExchange(ExchangePattern? pattern = null);
-}
-
-/// <summary>Sends exchanges to an endpoint.</summary>
-public interface IProducer : IProcessor, IService
-{
-    IEndpoint Endpoint { get; }
-}
-
-/// <summary>Receives messages from an endpoint and feeds them to a processor.</summary>
-public interface IConsumer : IService
-{
-    IEndpoint Endpoint { get; }
-
-    IProcessor Processor { get; }
-}
-
-/// <summary>A factory of endpoints for a URI scheme (e.g. <c>direct</c>, <c>seda</c>).</summary>
-public interface IComponent : IService
-{
-    ICaravanContext? Context { get; set; }
-
-    /// <summary>Creates an endpoint for the full <paramref name="uri"/>.</summary>
-    IEndpoint CreateEndpoint(string uri);
 }

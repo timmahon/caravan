@@ -6,27 +6,37 @@ namespace Caravan.Support;
 /// <summary>Formats an exchange for logging, like Camel's <c>DefaultExchangeFormatter</c>.</summary>
 public sealed class ExchangeFormatter
 {
+    /// <summary>Shows everything (overrides the individual options).</summary>
     public bool ShowAll { get; set; }
 
+    /// <summary>Shows the body (default true).</summary>
     public bool ShowBody { get; set; } = true;
 
+    /// <summary>Shows the body type (default true).</summary>
     public bool ShowBodyType { get; set; } = true;
 
+    /// <summary>Shows the message headers.</summary>
     public bool ShowHeaders { get; set; }
 
+    /// <summary>Shows the exchange properties.</summary>
     public bool ShowProperties { get; set; }
 
+    /// <summary>Shows the exchange id.</summary>
     public bool ShowExchangeId { get; set; }
 
+    /// <summary>Shows the exchange pattern (default true).</summary>
     public bool ShowExchangePattern { get; set; } = true;
 
+    /// <summary>Shows the exception, if any.</summary>
     public bool ShowException { get; set; }
 
+    /// <summary>Writes each part on its own line.</summary>
     public bool Multiline { get; set; }
 
     /// <summary>Maximum characters of the body to include (default 10000; 0 or less means unlimited).</summary>
     public int MaxChars { get; set; } = 10000;
 
+    /// <summary>Formats the exchange according to the options.</summary>
     public string Format(Exchange exchange)
     {
         var parts = new List<string>();

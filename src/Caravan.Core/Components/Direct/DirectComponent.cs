@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using Caravan.Spi;
 using Caravan.Support;
 
 namespace Caravan.Components.Direct;
@@ -20,6 +19,7 @@ public sealed class DirectComponent : ComponentBase
     /// <summary>Default for the endpoint's <c>timeout</c> option.</summary>
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
 
+    /// <inheritdoc />
     protected override EndpointBase CreateEndpoint(string uri, string remaining, IDictionary<string, string> parameters)
     {
         if (string.IsNullOrEmpty(remaining))
@@ -71,71 +71,5 @@ public sealed class DirectComponent : ComponentBase
         }
 
         return GetConsumer(key);
-    }
-}
-
-/// <summary>A <c>direct</c> endpoint.</summary>
-public sealed class DirectEndpoint(string uri, DirectComponent component, string name)
-    : EndpointBase(uri, component, component.Context!)
-{
-    public string Name { get; } = name;
-
-    /// <summary>Wait for a consumer to become available when sending (default true).</summary>
-    public bool Block { get; set; } = true;
-
-    /// <summary>How long to wait for a consumer when <see cref="Block"/> is true (default 30s).</summary>
-    public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(30);
-
-    /// <summary>Fail when there is no consumer (default true). When false the message is silently dropped.</summary>
-    public bool FailIfNoConsumers { get; set; } = true;
-
-    internal DirectComponent DirectComponent => (DirectComponent)Component!;
-
-    public override IProducer CreateProducer() => new DirectProducer(this);
-
-    public override IConsumer CreateConsumer(IProcessor processor) => new DirectConsumer(this, processor);
-}
-
-/// <summary>Thrown when sending to a <c>direct</c> endpoint without an active consumer.</summary>
-public sealed class DirectConsumerNotAvailableException(string message, Exchange exchange)
-    : CaravanExchangeException(message, exchange);
-
-internal sealed class DirectProducer(DirectEndpoint endpoint) : ProducerBase(endpoint)
-{
-    public override async ValueTask ProcessAsync(Exchange exchange)
-    {
-        var component = endpoint.DirectComponent;
-        var consumer = component.GetConsumer(endpoint.Name);
-        if (consumer is null && endpoint.Block)
-        {
-            consumer = await component.WaitForConsumerAsync(endpoint.Name, endpoint.Timeout, exchange.CancellationToken).ConfigureAwait(false);
-        }
-
-        if (consumer is null)
-        {
-            if (endpoint.FailIfNoConsumers)
-            {
-                throw new DirectConsumerNotAvailableException($"No consumers available on endpoint: {endpoint.EndpointUri}", exchange);
-            }
-
-            return;
-        }
-
-        await consumer.Processor.ProcessAsync(exchange).ConfigureAwait(false);
-    }
-}
-
-internal sealed class DirectConsumer(DirectEndpoint endpoint, IProcessor processor) : ConsumerBase(endpoint, processor)
-{
-    protected override Task DoStartAsync(CancellationToken cancellationToken)
-    {
-        endpoint.DirectComponent.AddConsumer(endpoint.Name, this);
-        return Task.CompletedTask;
-    }
-
-    protected override Task DoStopAsync(CancellationToken cancellationToken)
-    {
-        endpoint.DirectComponent.RemoveConsumer(endpoint.Name, this);
-        return Task.CompletedTask;
     }
 }

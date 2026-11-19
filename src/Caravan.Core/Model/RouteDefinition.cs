@@ -3,6 +3,7 @@ namespace Caravan.Model;
 /// <summary>A route: an input endpoint followed by a list of steps.</summary>
 public sealed class RouteDefinition
 {
+    /// <summary>Creates a route consuming from <paramref name="fromUri"/>.</summary>
     public RouteDefinition(string fromUri)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(fromUri);
@@ -18,15 +19,19 @@ public sealed class RouteDefinition
     /// <summary>Optional id for the <c>from</c> node.</summary>
     public string? FromId { get; set; }
 
+    /// <summary>The route's top-level steps.</summary>
     public List<ProcessorDefinition> Outputs { get; } = [];
 
+    /// <summary>Whether the route starts with the context (default true).</summary>
     public bool AutoStartup { get; set; } = true;
 
     /// <summary>Routes with a lower order start first and stop last.</summary>
     public int? StartupOrder { get; set; }
 
+    /// <summary>A human-readable description of the route.</summary>
     public string? Description { get; set; }
 
+    /// <summary>The name of the group the route belongs to.</summary>
     public string? Group { get; set; }
 
     /// <summary>Arbitrary route properties.</summary>
@@ -50,5 +55,6 @@ public sealed class RouteDefinition
         }
     }
 
+    /// <inheritdoc />
     public override string ToString() => $"Route({Id ?? "?"})[{FromUri} -> {string.Join(", ", Outputs)}]";
 }

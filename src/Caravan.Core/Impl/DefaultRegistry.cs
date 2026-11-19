@@ -11,8 +11,10 @@ public sealed class DefaultRegistry(IServiceProvider? services = null) : IRegist
 {
     private readonly ConcurrentDictionary<string, object> _beans = new(StringComparer.Ordinal);
 
+    /// <summary>The service provider used as a fallback for lookups, if any.</summary>
     public IServiceProvider? Services { get; } = services;
 
+    /// <inheritdoc />
     public void Bind(string name, object bean)
     {
         ArgumentException.ThrowIfNullOrEmpty(name);
@@ -20,13 +22,17 @@ public sealed class DefaultRegistry(IServiceProvider? services = null) : IRegist
         _beans[name] = bean;
     }
 
+    /// <inheritdoc />
     public bool Unbind(string name) => _beans.TryRemove(name, out _);
 
+    /// <inheritdoc />
     public object? Lookup(string name) => _beans.TryGetValue(name, out var bean) ? bean : null;
 
+    /// <inheritdoc />
     public T? Lookup<T>(string name)
         where T : class => Lookup(name) as T;
 
+    /// <inheritdoc />
     public IReadOnlyDictionary<string, T> FindByType<T>()
         where T : class
     {
@@ -43,6 +49,7 @@ public sealed class DefaultRegistry(IServiceProvider? services = null) : IRegist
         return result;
     }
 
+    /// <inheritdoc />
     public T? FindSingleByType<T>()
         where T : class
     {

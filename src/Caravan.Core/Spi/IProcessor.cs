@@ -6,26 +6,6 @@ namespace Caravan.Spi;
 /// </summary>
 public interface IProcessor
 {
+    /// <summary>Processes the exchange. May throw; the route records the exception on the exchange.</summary>
     ValueTask ProcessAsync(Exchange exchange);
-}
-
-/// <summary>A processor that wraps other processors (pipeline, choice, filter, ...).</summary>
-public interface INavigableProcessor : IProcessor
-{
-    IReadOnlyList<IProcessor> Next { get; }
-}
-
-/// <summary>A processor created from a lambda.</summary>
-public sealed class DelegateProcessor(Func<Exchange, ValueTask> action) : IProcessor
-{
-    public static DelegateProcessor From(Action<Exchange> action) =>
-        new(e =>
-        {
-            action(e);
-            return ValueTask.CompletedTask;
-        });
-
-    public static DelegateProcessor From(Func<Exchange, Task> action) => new(e => new ValueTask(action(e)));
-
-    public ValueTask ProcessAsync(Exchange exchange) => action(exchange);
 }

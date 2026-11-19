@@ -10,6 +10,7 @@ public static class PatternHelper
 {
     private static readonly ConcurrentDictionary<string, Regex?> Cache = new();
 
+    /// <summary>Whether <paramref name="name"/> matches <paramref name="pattern"/>.</summary>
     public static bool Matches(string name, string pattern)
     {
         if (pattern == "*" || string.Equals(name, pattern, StringComparison.OrdinalIgnoreCase))

@@ -66,7 +66,7 @@ Optional features hook into the core without changing it:
 
 ## Adding an EIP
 
-Each EIP is four pieces, each in its own file named after the EIP where reasonable:
+Each EIP is four pieces, each type in its own file named after the type:
 
 1. **Definition** in `src/Caravan.Core/Model/` – a `ProcessorDefinition` (or `OutputDefinition` when it has
    a nested block). Plain settable properties, a `ShortName` matching Camel's EIP name (`split`, `choice`, ...),
@@ -98,7 +98,21 @@ Use `context.TimeProvider` for anything time-based (delays, timers, timeouts) so
 
 ## Conventions
 
-- `net10.0`, nullable enabled, warnings are errors, XML docs on public types where they add information.
+Ground rules, enforced by the build (a violation fails `dotnet build`):
+
+1. **Central package management** – versions live only in `Directory.Packages.props`; `PackageReference`
+   items never carry a `Version`.
+2. **Warnings are errors** – `TreatWarningsAsErrors` in `Directory.Build.props`.
+3. **One type per file, file named after the type** – StyleCop.Analyzers rules SA1402 and SA1649 at error
+   (`.editorconfig`, `stylecop.json`); every other StyleCop rule is off. In the `src` projects this applies to all top-level types
+   (classes, records, interfaces, structs, enums, delegates), internal ones included.
+4. **XML documentation on every public type and public/protected member** of the `src` projects – CS1591 is
+   not suppressed. Write a useful `<summary>` (plus `<param>`/`<returns>`/`<exception>` where they add
+   information); use `<inheritdoc />` for overrides and interface implementations.
+
+Other conventions:
+
+- `net10.0`, nullable enabled.
 - File-scoped namespaces: `Caravan` (main API), `Caravan.Spi`, `Caravan.Model`, `Caravan.Builder`,
   `Caravan.Processors`, `Caravan.Support`, `Caravan.Impl`, `Caravan.Components.<Name>`.
 - Tests: xUnit, one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock

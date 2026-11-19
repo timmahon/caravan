@@ -48,6 +48,8 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         RegisterGlobalComponent("mock", () => new MockComponent());
     }
 
+    /// <summary>Creates a context.</summary>
+    /// <param name="services">Optional service provider used as a fallback by the registry for bean lookups.</param>
     public CaravanContext(IServiceProvider? services = null)
     {
         Registry = new DefaultRegistry(services);
@@ -61,30 +63,42 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     public static void RegisterGlobalComponent(string scheme, Func<IComponent> factory) =>
         GlobalComponentFactories[scheme] = factory;
 
+    /// <inheritdoc />
     public string Name { get; set; } = "caravan-1";
 
+    /// <summary>The service provider backing the registry, if any.</summary>
     public IServiceProvider? Services { get; }
 
+    /// <inheritdoc />
     public IRegistry Registry { get; }
 
+    /// <inheritdoc />
     public TypeConverterRegistry TypeConverter { get; } = new();
 
+    /// <inheritdoc />
     public TimeProvider TimeProvider { get; set; } = TimeProvider.System;
 
+    /// <inheritdoc />
     public ILoggerFactory LoggerFactory { get; set; } = NullLoggerFactory.Instance;
 
+    /// <inheritdoc />
     public bool AllowUseOriginalMessage { get; set; }
 
+    /// <inheritdoc />
     public CancellationToken ShutdownToken => _shutdown.Token;
 
+    /// <inheritdoc />
     public IList<IInterceptStrategy> InterceptStrategies { get; } = new List<IInterceptStrategy>();
 
+    /// <inheritdoc />
     public IList<IEventNotifier> EventNotifiers { get; } = new List<IEventNotifier>();
 
+    /// <inheritdoc />
     public IList<IPropertiesSource> PropertiesSources { get; } = new List<IPropertiesSource>();
 
     // ----- Components -----
 
+    /// <inheritdoc />
     public void AddComponent(string scheme, IComponent component)
     {
         component.Context = this;
@@ -99,8 +113,10 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         }
     }
 
+    /// <inheritdoc />
     public void AddComponentFactory(string scheme, Func<IComponent> factory) => _componentFactories[scheme] = factory;
 
+    /// <inheritdoc />
     public IComponent? GetComponent(string scheme)
     {
         if (_components.TryGetValue(scheme, out var existing))
@@ -130,15 +146,18 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         return created;
     }
 
+    /// <inheritdoc />
     public T GetComponent<T>(string scheme)
         where T : class, IComponent =>
         GetComponent(scheme) as T ?? throw new InvalidOperationException($"No component of type {typeof(T).Name} for scheme {scheme}");
 
+    /// <inheritdoc />
     public IReadOnlyCollection<string> ComponentNames =>
         _components.Keys.Union(_componentFactories.Keys).Union(GlobalComponentFactories.Keys, StringComparer.OrdinalIgnoreCase).ToList();
 
     // ----- Endpoints -----
 
+    /// <inheritdoc />
     public IEndpoint GetEndpoint(string uri)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(uri);
@@ -167,16 +186,19 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         return added;
     }
 
+    /// <inheritdoc />
     public T GetEndpoint<T>(string uri)
         where T : class, IEndpoint =>
         GetEndpoint(uri) as T ?? throw new InvalidOperationException($"Endpoint {uri} is not of type {typeof(T).Name}");
 
+    /// <inheritdoc />
     public void AddEndpoint(string uri, IEndpoint endpoint)
     {
         _endpoints[EndpointUri.Normalize(ResolvePropertyPlaceholders(uri))] = endpoint;
         StartIfRunning(endpoint);
     }
 
+    /// <inheritdoc />
     public IReadOnlyCollection<IEndpoint> Endpoints => _endpoints.Values.Distinct().ToList();
 
     private void StartIfRunning(IService service)
@@ -189,6 +211,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
     // ----- Routes -----
 
+    /// <inheritdoc />
     public IReadOnlyList<RouteDefinition> RouteDefinitions
     {
         get
@@ -200,6 +223,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         }
     }
 
+    /// <inheritdoc />
     public IReadOnlyList<IRoute> Routes
     {
         get
@@ -211,6 +235,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         }
     }
 
+    /// <inheritdoc />
     public IRoute? GetRoute(string routeId)
     {
         lock (_routesLock)
@@ -219,6 +244,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         }
     }
 
+    /// <inheritdoc />
     public void AddRoutes(IRoutesBuilder builder)
     {
         if (IsRunAllowed)
@@ -238,6 +264,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         }
     }
 
+    /// <inheritdoc />
     public async Task AddRoutesAsync(IRoutesBuilder builder, CancellationToken cancellationToken = default)
     {
         var definitions = builder.Build(this);
@@ -270,18 +297,21 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         }
     }
 
+    /// <inheritdoc />
     public async Task StartRouteAsync(string routeId, CancellationToken cancellationToken = default)
     {
         var route = (Route?)GetRoute(routeId) ?? throw new ArgumentException($"No route with id: {routeId}", nameof(routeId));
         await StartRouteInternalAsync(route, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
     public async Task StopRouteAsync(string routeId, CancellationToken cancellationToken = default)
     {
         var route = (Route?)GetRoute(routeId) ?? throw new ArgumentException($"No route with id: {routeId}", nameof(routeId));
         await StopRouteInternalAsync(route, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <inheritdoc />
     public async Task<bool> RemoveRouteAsync(string routeId, CancellationToken cancellationToken = default)
     {
         var route = (Route?)GetRoute(routeId);
@@ -383,6 +413,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
     // ----- Lifecycle -----
 
+    /// <summary>Starts services, components and endpoints, creates the routes and starts those with auto-startup.</summary>
     protected override async Task DoStartAsync(CancellationToken cancellationToken)
     {
         if (_shutdown.IsCancellationRequested)
@@ -430,6 +461,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         EventHelper.Notify(this, CaravanEventType.ContextStarted);
     }
 
+    /// <summary>Stops routes in reverse startup order, then endpoints, components and services.</summary>
     protected override async Task DoStopAsync(CancellationToken cancellationToken)
     {
         EventHelper.Notify(this, CaravanEventType.ContextStopping);
@@ -465,6 +497,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         EventHelper.Notify(this, CaravanEventType.ContextStopped);
     }
 
+    /// <summary>Stops the context.</summary>
     public async ValueTask DisposeAsync()
     {
         await StopAsync().ConfigureAwait(false);
@@ -472,6 +505,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         GC.SuppressFinalize(this);
     }
 
+    /// <inheritdoc />
     public async Task AddServiceAsync(object service, CancellationToken cancellationToken = default)
     {
         lock (_services)
@@ -492,11 +526,14 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
     // ----- Misc -----
 
+    /// <inheritdoc />
     public IProducerTemplate CreateProducerTemplate() => new ProducerTemplate(this);
 
+    /// <inheritdoc />
     public string NextNodeId(string prefix) =>
         prefix + _nodeIdCounters.AddOrUpdate(prefix, 1, (_, n) => n + 1);
 
+    /// <inheritdoc />
     public string ResolvePropertyPlaceholders(string text)
     {
         if (string.IsNullOrEmpty(text) || !text.Contains("{{", StringComparison.Ordinal))
@@ -558,20 +595,17 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         return defaultValue ?? throw new ArgumentException($"Property with key [{key}] not found in properties from text: {text}");
     }
 
+    /// <inheritdoc />
     public T? GetExtension<T>()
         where T : class => _extensions.TryGetValue(typeof(T), out var value) ? (T)value : null;
 
+    /// <inheritdoc />
     public void SetExtension<T>(T extension)
         where T : class => _extensions[typeof(T)] = extension;
 
+    /// <inheritdoc />
     public T GetOrAddExtension<T>(Func<T> factory)
         where T : class => (T)_extensions.GetOrAdd(typeof(T), _ => factory());
 
     internal ILogger CreateLogger(string category) => LoggerFactory.CreateLogger(category);
-}
-
-/// <summary>Callbacks invoked for every route before its processors are built (used by optional features).</summary>
-public sealed class RouteContextConfigurers
-{
-    public List<Action<RouteContext>> Configurers { get; } = [];
 }
