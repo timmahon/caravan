@@ -219,4 +219,28 @@ public class DslOverloadTests : ContextTestBase
 
         Assert.Equal(65, route.Outputs.Count);
     }
+
+    [Fact]
+    public void Circuit_breaker_and_saga_lambda_shapes_bind_to_a_single_overload()
+    {
+        var route = RouteBuilder.Create(b => b.From("direct:start")
+            .CircuitBreaker(cb => cb.To("mock:a"))
+            .CircuitBreaker(_ => { }, c => c.FailureRatio(0.5).MinimumThroughput(10).SamplingDuration(TimeSpan.FromSeconds(10)).BreakDuration(TimeSpan.FromSeconds(5)))
+            .CircuitBreaker(cb => cb.To("mock:a"), fallback: f => f.Transform(_ => "fallback"))
+            .CircuitBreaker(_ => { }, c => c.Timeout(TimeSpan.FromSeconds(1)).Bulkhead(5, 2).ConfigurationRef("shared"), _ => { })
+            .CircuitBreaker(cb => cb.Process(_ => throw new InvalidOperationException()), c => c.OnFallback(f => f.Stop()))
+            .CircuitBreaker(_ => { }, c => c.OnFallbackViaNetwork(_ => { }).InheritErrorHandler().IgnoreExceptions(typeof(IOException)).RecordExceptions(typeof(Exception)))
+            .Saga(s => s.Compensation("direct:undo"))
+            .Saga(_ => { })
+            .Saga()
+            .Saga(s => s.Propagation(Model.SagaPropagation.RequiresNew).Completion("direct:done"), body => body.To("mock:a"))
+            .Saga(_ => { }, _ => { })
+            .Saga(s => s.Option("id", Expr.Header("id")).Option("n", e => e.Message.Body).Option("x", _ => throw new InvalidOperationException()), _ => { })
+            .Saga(s => s.CompletionMode(Model.SagaCompletionMode.Manual).Timeout(TimeSpan.FromMinutes(1)), body => body.SagaComplete())
+            .SagaComplete()
+            .SagaCompensate())
+            .Build(Context).Single();
+
+        Assert.Equal(15, route.Outputs.Count);
+    }
 }

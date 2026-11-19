@@ -4,6 +4,7 @@ using Caravan.Builder;
 using Caravan.Components.Direct;
 using Caravan.Components.Log;
 using Caravan.Components.Mock;
+using Caravan.Components.Saga;
 using Caravan.Components.Scheduler;
 using Caravan.Components.Seda;
 using Caravan.Components.Timer;
@@ -53,6 +54,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         RegisterGlobalComponent("vm", () => new VmComponent());
         RegisterGlobalComponent("timer", () => new TimerComponent());
         RegisterGlobalComponent("scheduler", () => new SchedulerComponent());
+        RegisterGlobalComponent("saga", () => new SagaComponent());
     }
 
     /// <summary>Creates a context.</summary>

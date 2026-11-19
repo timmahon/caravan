@@ -105,4 +105,18 @@ public static class ExchangePropertyKeys
     public const string DuplicateMessage = "CaravanDuplicateMessage";
     /// <summary>The <see cref="Spi.IClaimCheckRepository"/> of the exchange, created by the first <c>claimCheck</c>.</summary>
     public const string ClaimCheckRepository = "CaravanClaimCheckRepository";
+    /// <summary>True when the <c>circuitBreaker</c> block ran and succeeded (Camel's <c>CamelResponseSuccessfulExecution</c>).</summary>
+    public const string ResponseSuccessfulExecution = "CaravanResponseSuccessfulExecution";
+    /// <summary>True when the response of a <c>circuitBreaker</c> came from its fallback (Camel's <c>CamelResponseFromFallback</c>).</summary>
+    public const string ResponseFromFallback = "CaravanResponseFromFallback";
+    /// <summary>True when a <c>circuitBreaker</c> did not run its block because the circuit was open (Camel's <c>CamelResponseShortCircuited</c>).</summary>
+    public const string ResponseShortCircuited = "CaravanResponseShortCircuited";
+    /// <summary>True when the block of a <c>circuitBreaker</c> timed out (Camel's <c>CamelResponseTimedOut</c>).</summary>
+    public const string ResponseTimedOut = "CaravanResponseTimedOut";
+    /// <summary>
+    /// True when a <c>circuitBreaker</c> rejected the call: the circuit was open or the bulkhead was full (Camel's <c>CamelResponseRejected</c>).
+    /// </summary>
+    public const string ResponseRejected = "CaravanResponseRejected";
+    /// <summary>The state of the circuit (a <see cref="Caravan.CircuitBreakerState"/> name) after a <c>circuitBreaker</c> call (Camel's <c>CamelCircuitBreakerState</c>).</summary>
+    public const string CircuitBreakerState = "CaravanCircuitBreakerState";
 }
