@@ -28,7 +28,7 @@ public sealed class OnCompletionProcessor : INavigableProcessor
     public static IProcessor Wrap(RouteContext routeContext, IProcessor pipeline)
     {
         var blocks = new List<(OnCompletionDefinition, IProcessor)>();
-        foreach (var definition in routeContext.Definition.OnCompletions.Where(d => !d.Disabled))
+        foreach (var definition in routeContext.OnCompletions.Where(d => !d.Disabled))
         {
             definition.Id ??= routeContext.Context.NextNodeId(definition.ShortName);
             var block = definition.CreateProcessor(routeContext);

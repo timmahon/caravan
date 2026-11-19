@@ -330,4 +330,45 @@ public class DslOverloadTests : ContextTestBase
         Assert.Equal(3, route.InterceptFroms.Count);
         Assert.Equal(3, route.InterceptSendToEndpoints.Count);
     }
+
+    [Fact]
+    public void Template_and_route_configuration_lambda_shapes_bind_to_a_single_overload()
+    {
+        var builder = (RouteBuilder)RouteBuilder.Create(b =>
+        {
+            b.RouteTemplate("t")
+                .TemplateParameter("a")
+                .TemplateParameter("b", "1")
+                .TemplateParameter("c", description: "c", required: false)
+                .TemplateOptionalParameter("d")
+                .TemplateBean("x", _ => new object())
+                .TemplateBean("y", rtc => rtc.GetProperty("a")!)
+                .TemplateBean("z", typeof(Order))
+                .TemplateBean<object>("w", _ => throw new InvalidOperationException())
+                .Configure(_ => { })
+                .From("direct:{{a}}").To("mock:{{a}}");
+            b.TemplatedRoute("t");
+            b.TemplatedRoute("t", r => r.Parameter("a", 1).Bean("x", new object()).Bean("y", _ => new Order("1", 2m)).Handler(_ => { }).Configure(_ => { }));
+            b.RouteConfiguration(c => c.OnException<InvalidOperationException>());
+            b.RouteConfiguration(null, _ => { });
+            b.RouteConfiguration("id", c => c
+                .OnException(typeof(ArgumentException), o => o.Handled(true))
+                .OnException([typeof(ArgumentException)], _ => { })
+                .OnCompletion(o => o.To("mock:done"))
+                .Intercept(_ => { })
+                .InterceptFrom(_ => { })
+                .InterceptFrom("direct:*", i => i.When(_ => true))
+                .InterceptSendToEndpoint("mock:*")
+                .InterceptSendToEndpoint("mock:*", _ => { }, skipSendToOriginalEndpoint: true)
+                .ErrorHandler(b.NoErrorHandler()));
+            b.From("direct:start").RouteConfigurationId("id").To("mock:f");
+        });
+        var routes = builder.Build(Context);
+
+        Assert.Single(routes);
+        Assert.Equal(4, builder.RouteTemplateDefinitions.Single().Beans.Count);
+        Assert.Equal(2, builder.TemplatedRouteDefinitions.Count);
+        Assert.Equal(3, builder.RouteConfigurationDefinitions.Count);
+        Assert.Equal(2, builder.RouteConfigurationDefinitions[2].InterceptFroms.Count);
+    }
 }

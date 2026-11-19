@@ -28,6 +28,40 @@ public sealed class RouteContext
     /// <summary>The route id.</summary>
     public string RouteId { get; }
 
+    /// <summary>The route configurations applied to the route, in order (see <see cref="RouteConfigurationDefinition"/>).</summary>
+    public IReadOnlyList<RouteConfigurationDefinition> RouteConfigurations { get; private set; } = [];
+
+    /// <summary>
+    /// The route's error handler: its own or its route builder's (<see cref="RouteDefinition.ErrorHandler"/>), else the first applied route
+    /// configuration's; null leaves the choice to the context.
+    /// </summary>
+    public ErrorHandlerDefinition? ErrorHandler =>
+        Definition.ErrorHandler ?? RouteConfigurations.Select(c => c.ErrorHandler).FirstOrDefault(e => e is not null);
+
+    /// <summary>
+    /// The <c>onException</c> clauses of the route in precedence order: the route's own (route scoped), its builder's, then those of the
+    /// applied route configurations.
+    /// </summary>
+    public IReadOnlyList<OnExceptionDefinition> OnExceptions =>
+        Combine(Definition.OnExceptions, c => c.OnExceptions);
+
+    /// <summary>
+    /// The <c>onCompletion</c> blocks of the route: its own or its builder's (<see cref="RouteDefinition.OnCompletions"/>); when it has none,
+    /// those of the applied route configurations.
+    /// </summary>
+    public IReadOnlyList<OnCompletionDefinition> OnCompletions =>
+        Definition.OnCompletions.Count > 0 ? Definition.OnCompletions : Combine([], c => c.OnCompletions);
+
+    /// <summary>The <c>intercept</c> blocks of the route: its own (builder, advice), then those of the applied route configurations.</summary>
+    public IReadOnlyList<InterceptDefinition> Intercepts => Combine(Definition.Intercepts, c => c.Intercepts);
+
+    /// <summary>The <c>interceptFrom</c> blocks of the route: its own, then those of the applied route configurations.</summary>
+    public IReadOnlyList<InterceptFromDefinition> InterceptFroms => Combine(Definition.InterceptFroms, c => c.InterceptFroms);
+
+    /// <summary>The <c>interceptSendToEndpoint</c> definitions of the route: its own, then those of the applied route configurations.</summary>
+    public IReadOnlyList<InterceptSendToEndpointDefinition> InterceptSendToEndpoints =>
+        Combine(Definition.InterceptSendToEndpoints, c => c.InterceptSendToEndpoints);
+
     /// <summary>Services (processors, producers, ...) started and stopped with the route.</summary>
     public IReadOnlyList<object> Services => _services;
 
@@ -105,6 +139,40 @@ public sealed class RouteContext
 
         return processors.Count == 1 ? processors[0] : new Pipeline(processors);
     }
+
+    /// <summary>
+    /// Selects the route configurations of the route among <paramref name="configurations"/> (Camel's rules): with
+    /// <see cref="RouteDefinition.RouteConfigurationIds"/>, for each id or pattern in order, the configurations with a matching id; without, the
+    /// configurations without id (or with id <c>*</c>).
+    /// </summary>
+    /// <exception cref="ArgumentException">An id without wildcard matches no configuration.</exception>
+    internal void ApplyRouteConfigurations(IReadOnlyList<RouteConfigurationDefinition> configurations)
+    {
+        var selected = new List<RouteConfigurationDefinition>();
+        if (Definition.RouteConfigurationIds is not { } ids)
+        {
+            selected.AddRange(configurations.Where(c => c.Id is null or "*"));
+        }
+        else
+        {
+            foreach (var id in ids.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+            {
+                var matches = configurations.Where(c => c.Id is not null && Support.PatternHelper.Matches(c.Id, id)).ToList();
+                if (matches.Count == 0 && !id.Contains('*', StringComparison.Ordinal) && !id.Any(c => c is '^' or '$' or '[' or '(' or '|' or '?' or '+'))
+                {
+                    throw new ArgumentException($"Route configuration with id {id} not found");
+                }
+
+                selected.AddRange(matches.Where(m => !selected.Contains(m)));
+            }
+        }
+
+        RouteConfigurations = selected;
+    }
+
+    private IReadOnlyList<T> Combine<T>(List<T> own, Func<RouteConfigurationDefinition, List<T>> select)
+        where T : class =>
+        RouteConfigurations.Count == 0 ? own : [.. own, .. RouteConfigurations.SelectMany(select).Where(d => !own.Contains(d))];
 
     /// <summary>Resolves an endpoint, applying property placeholders.</summary>
     public IEndpoint ResolveEndpoint(string uri) => Context.GetEndpoint(uri);

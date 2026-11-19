@@ -19,7 +19,7 @@ public sealed class Exchange
     {
         Context = context;
         Pattern = pattern;
-        ExchangeId = Guid.NewGuid().ToString("N");
+        ExchangeId = context.UuidGenerator.GenerateUuid();
         Created = context.TimeProvider.GetUtcNow();
         _message = new Message(this);
     }
@@ -221,7 +221,7 @@ public sealed class Exchange
     public Exchange CreateCorrelatedCopy()
     {
         var copy = Copy();
-        copy.ExchangeId = Guid.NewGuid().ToString("N");
+        copy.ExchangeId = Context.UuidGenerator.GenerateUuid();
         copy.Exception = null;
         copy.IsRouteStop = false;
         copy.IsRollbackOnly = false;
