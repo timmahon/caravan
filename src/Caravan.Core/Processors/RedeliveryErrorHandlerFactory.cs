@@ -58,7 +58,7 @@ internal sealed class RedeliveryErrorHandlerFactory : IErrorHandlerFactory
         }
 
         EnsurePolicies();
-        return new RedeliveryErrorHandler(this, definition, target);
+        return new RedeliveryErrorHandler(this, definition, target, routeContext);
     }
 
     public ExceptionPolicy? FindPolicy(Exchange exchange, Exception exception) => ExceptionPolicyStrategy.Find(Policies, exchange, exception);

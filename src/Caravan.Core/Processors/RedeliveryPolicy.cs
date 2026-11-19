@@ -75,6 +75,12 @@ public sealed class RedeliveryPolicy
     /// <summary>Whether the exchange (body, headers, ...) is included when logging an exhausted failure (default true).</summary>
     public bool LogExhaustedExchange { get; set; } = true;
 
+    /// <summary>
+    /// Whether the message history table (route and node ids, processors and elapsed times, see <see cref="ICaravanContext.MessageHistory"/>) is
+    /// included when logging an exhausted failure (default true; it is only available when message history is enabled).
+    /// </summary>
+    public bool LogExhaustedMessageHistory { get; set; } = true;
+
     /// <summary>Creates a copy of this policy.</summary>
     public RedeliveryPolicy Copy() => (RedeliveryPolicy)MemberwiseClone();
 

@@ -65,6 +65,12 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `KameletComponent` | `kamelet:` calls a template as a reusable route snippet | `kamelet` component |
 | `RouteConfigurationDefinition` / `RouteConfigurationBuilder` | Shared error handling and interceptors selected by routes (see "Route configuration") | `RouteConfigurationDefinition` / `RouteConfigurationBuilder` |
 | `IUuidGenerator` | Exchange, message and saga ids (see "Global configuration") | `UuidGenerator` |
+| `CaravanDiagnostics` / `TelemetryOptions` | OpenTelemetry-compatible spans and metrics (`ActivitySource`/`Meter` "Caravan", see "Observability") | `camel-opentelemetry` / `camel-micrometer` |
+| `MessageHistoryEntry` / `MessageHistoryFormatter` | Per-exchange message history (`ICaravanContext.MessageHistory`) | `MessageHistory` |
+| `CaravanTracer` / `BacklogTracer` | Step logging and in-memory trace backlog | `Tracer` / `BacklogTracer` |
+| `IManagementService` | Statistics and operations of the context, routes, nodes, endpoints (see "Management") | JMX MBeans |
+| `HealthCheckRegistry` / `IHealthCheck` / `IHealthCheckRepository` | Health checks of the context, routes, consumers, circuit breakers and components | `HealthCheckRegistry` / `HealthCheck` / `HealthCheckRepository` |
+| `Caravan.Hosting`: `AddCaravan`, `CaravanHostedService`, `AddCaravanHealthChecks` | Generic Host integration (see "Hosting") | Camel main / Spring Boot starter |
 
 ### Error semantics
 
@@ -501,7 +507,7 @@ resolved text is compiled and cached), so they work in `log`, `toD`, `setBody(si
   function (`${bean:name?method=foo}`, `${bean:name.foo}`, `${bean:class:Full.Type?method=foo}`) is registered this way by `SimpleLanguage`'s
   static constructor (`BeanExpression.Parse`).
 
-Differences from Camel: no `messageHistory`, `messageTimestamp`, `date:file`, `variable(s)`, `jsonpath`/`xpath` or the newer string
+Differences from Camel: no `messageTimestamp`, `date:file`, `variable(s)`, `jsonpath`/`xpath` or the newer string
 functions; `sys.name` reads `AppContext.GetData`; `exception.stacktrace` is `Exception.ToString()`; `collate`/`skip`/`join` split a string
 body on commas (Camel's iterator) unlike `split`; unquoted words inside `${...}` are function names, not text (quote literals there);
 `$${` is not an escape (use `\${`); unknown escapes keep the backslash; header names containing `+`/`-` cannot be used in `date:` commands
@@ -716,8 +722,99 @@ Context-wide defaults (Camel's `CamelContext`/main options), all on `ICaravanCon
 | `AutoStartup` | true | When false no route starts with the context (whatever its own `autoStartup`, as Camel); routes added to a running context follow their own option. |
 | `RouteFilterIncludePattern` / `RouteFilterExcludePattern` | null | Comma-separated patterns (exact, wildcard, regex) matched against the route id and the `from` URI (`EndpointHelper.MatchEndpoint`) when routes are added; exclude wins; filtered routes are dropped (debug log). Handy to run a subset of routes in a test. |
 | `UuidGenerator` | `DefaultUuidGenerator` | `IUuidGenerator.GenerateUuid()` makes exchange ids (also correlated copies), message ids, in-memory saga ids and `${uuid}`. Built-ins (`Caravan.Impl`): `DefaultUuidGenerator` (Guid, 32 hex), `RandomUuidGenerator` (Guid with dashes), `ShortUuidGenerator` (16 hex: random prefix + counter), `SimpleUuidGenerator` (1, 2, 3...; predictable ids for tests), `ClassicUuidGenerator` (`ID-host-millis-0-n`). Simple's `${uuid:default|random|short|simple|classic}` pick one explicitly. |
+| `MessageHistory` | false | Records the steps of each exchange (see "Observability"). |
+| `Tracing` / `Tracer.Standby` | false | Logs every step at INFO in `Caravan.Tracing`. |
+| `BacklogTracer.Enabled` | false | Keeps the last 100 steps in memory. |
+| `Telemetry` | spans and metrics on, node spans off | Only recorded while a listener is attached. |
+| `Management.StatisticsLevel` | `Default` | `RoutesOnly`/`Off` drop node (and context) counters. |
 
-Message history and tracing come with observability (row 13).
+### Observability
+
+All in `Caravan.Core` (namespace `Caravan.Observability`), built on `System.Diagnostics` only:
+
+- **Tracing.** `CaravanDiagnostics.ActivitySource` ("Caravan", with the assembly version). `RouteProcessor` starts one span per exchange per route,
+  `route {routeId}`: kind `Consumer` (`Server` for `InOut`) when the exchange enters the context (a new unit of work), `Internal` for a call from
+  another route (`direct`). Every send — producers are created with `SendToEndpointInterceptors.CreateProducer`, so `to`, `toD`, recipient lists,
+  dead letter channels and templates alike — gets a `send {scheme}:{path}` span (`Producer`, `Client` for `InOut`). With
+  `Telemetry.TraceProcessors` a `{eip} {nodeId}` span wraps each node. Attributes: `caravan.context.name`, `caravan.route.id`, `caravan.exchange.id`,
+  `caravan.endpoint.uri` (secrets masked by `UriSanitizer`: options named like password/secret/token/key and user-info passwords → `xxxxxx`),
+  `caravan.node.id`/`label`, `messaging.system` (scheme), `messaging.destination.name` (path), `messaging.operation.type` (`process`/`send`),
+  `messaging.message.id`. A failed exchange sets the `Error` status and an `exception` event; a handled failure only tags
+  `caravan.exchange.failure_handled`.
+- **Propagation.** A send injects the W3C `traceparent`/`tracestate` (and `baggage`) of its span — or of the ambient `Activity.Current` when Caravan
+  creates none — into the message headers; a route receiving a new exchange extracts them as the (remote) parent. So traces continue across `seda`/`vm`
+  (the queued copy keeps the headers) and later across transports. Calls within one exchange simply nest through `Activity.Current`.
+- **Zero cost when unobserved.** Every hook first checks `ActivitySource.HasListeners()` / `Instrument.Enabled`; with nobody listening no span, tag
+  list or header is created. Contexts are told apart by the `caravan.context.name` attribute (also how tests sample their own context).
+- **Metrics** (`CaravanDiagnostics.Meter`, names in `CaravanSemanticConventions`): counters `caravan.exchanges.total|succeeded|failed` (per route
+  entry), `caravan.exchanges.failures_handled`, `caravan.exchanges.redeliveries` (from the error handler), up-down counter
+  `caravan.exchanges.inflight`, histograms `caravan.exchange.duration` and `caravan.send.duration` (seconds, OTel convention; the latter tagged with
+  the endpoint URI without options), observable gauge `caravan.routes.running`. Route instruments carry `caravan.context.name` and `caravan.route.id`.
+- **Message history** (`context.MessageHistory`). The `CaravanMessageHistory` property holds a `List<MessageHistoryEntry>` (route id, node id,
+  label, timestamp, elapsed): one `from[uri]` entry per route entry and one per node. `Exchange.Copy` copies the list, so split parts and `seda` copies
+  have their own history. `MessageHistoryFormatter.Format` renders Camel's table; the error handler appends it to the exhausted log
+  (`LogExhaustedMessageHistory`, default true), and Simple's `${messageHistory}` / `${messageHistory(false)}` (without the exchange) renders it.
+- **Tracer** (`context.Tracing`, `CaravanTracer`): logs `*-->` route input, each node (`[route] [node] label Exchange[...]`) and `*<--` output at
+  `LogLevel` in `Caravan.Tracing`, filtered by `TracePattern` (route or node ids). **BacklogTracer**: a bounded queue (`BacklogSize`, 100) of
+  `BacklogTracerEventMessage`s (uid, timestamp, route, node, exchange id, body text, headers, then elapsed and exception), with
+  `Include/ExcludePatterns`, `TraceFilter` (predicate), `DumpTracedMessages(nodeId)` (removes when `RemoveOnDump`), `DumpAllTracedMessages`,
+  `Clear`. Both need `Enabled` or `Standby` when routes are created.
+- **One wrapper per node.** `NodeInstrumentationStrategy` is inserted first in the route's intercept strategies (outermost: timings include intercept
+  blocks and redeliveries) and wraps every node in an `InstrumentedNodeProcessor` doing node statistics, history, tracer, backlog tracer and node spans,
+  as configured when the route was created.
+
+Differences from Camel: telemetry is built in (no separate component) and always uses W3C headers; spans are named `route x` / `send scheme:path`
+rather than by endpoint; processing times are measured on `context.TimeProvider` (so a fake clock gives deterministic statistics); the backlog
+tracer records the message before the node and fills elapsed/exception after it; there is no debugger.
+
+### Management
+
+`context.Management` (`IManagementService`, `Caravan.Management`) is the JMX equivalent. Counters (`ProcessingCounters`, lock-free) live in each
+route's `RouteContext` — so they go away with the runtime routes when the context stops — and in the management service for the context:
+
+- **Statistics** (`ProcessingStatistics` snapshots): total/completed/failed/inflight exchanges, failures handled, redeliveries, min/max/mean/last/total
+  processing time (completed exchanges only, as Camel), first/last completed, last failure, last created and reset timestamps. `GetContextStatistics`
+  (each exchange counted once, when it enters the context; plus uptime and route counts), `GetRouteStatistics` (status, uptime, sanitized endpoint,
+  group, template), `GetProcessorStatistics(routeId)` (per node, in route order, with nesting level). `Reset()`/`ResetRoute(id)`. `Route.ExchangesTotal`
+  etc. (used by `controlbus` stats) read the same counters. `StatisticsLevel`: `Default`, `RoutesOnly`, `Off`.
+- **Operations**: start/stop/suspend/resume route, `DumpRouteAsText` (indented model), `ListEndpoints` (sanitized URI, consuming routes, inbound and
+  outbound hits), `ListComponents` (created and available), `ListCircuitBreakers`, `BrowseInflight`.
+
+There is no HTTP endpoint yet (row 16 brings ASP.NET Core).
+
+### Health checks
+
+`context.HealthChecks` (`HealthCheckRegistry`, `Caravan.Health`) mirrors Camel's health-check registry. `IHealthCheck` (`Id`, `Group`, `IsReadiness`
+(default true), `IsLiveness` (default false), `CheckAsync` → `HealthCheckResult(Id, State)` with `Message`, `Error`, `Details`); `HealthState` is
+`Up`, `Degraded`, `Down` or `Unknown`. Checks come from the registry itself (`Register`), `IHealthCheck`/`IHealthCheckRepository` registry beans and
+created components implementing `IHealthCheckRepository`; `ExcludePattern` drops ids or groups; a throwing check is `Down`. Built-ins: `context`
+(liveness and readiness, Up while started), `route:{id}` (Up when started or intentionally not started, `Down` when failed, `Unknown` while the
+supervising route controller retries, `Degraded` when stopped/suspended though it should run), `consumer:{id}` (`Down` once the supervising controller
+gave up, `Unknown` while it retries, or the consumer's own result when it implements `IHealthCheck`), `circuit-breakers` (`Degraded` while a circuit is
+open or isolated) and, from the `seda`/`vm` components, `seda:{name}` (`Degraded` while a bounded queue is full). `HealthCheckRegistry.Aggregate` gives
+the worst state.
+
+### Hosting
+
+`src/Caravan.Hosting` (Generic Host abstractions, options, health checks):
+
+- `services.AddCaravan(o => ...)` binds `CaravanOptions` from the `Caravan` section (name, auto startup, stream caching, shutdown timeout, route
+  filters, tracing, backlog tracing, message history, original message, OpenTelemetry tracing/metrics/node spans/propagation, statistics level),
+  then applies the lambda; returns an `ICaravanBuilder`: `AddRoutes<T>()` (resolved from DI, registered as singleton if needed, so route builders can
+  inject services), `AddRoutes(instance | factory)`, `AddRouteConfiguration<T>()`, `AddComponent(scheme, sp => ...)`,
+  `AddRouteTemplateParameterSource(...)`, `Configure(ctx => ...)` / `Configure((sp, ctx) => ...)`. Calling `AddCaravan` again reuses the registration.
+- Registered: `CaravanContext`/`ICaravanContext` singletons (registry backed by the service provider, the host's `ILoggerFactory`, its
+  `TimeProvider` when registered, `IConfiguration` as properties source and templated routes); singleton `IProducerTemplate` and `IConsumerTemplate`
+  (thread-safe and meant to be reused, as in Camel); `IManagementService`; `HealthCheckRegistry`; `CaravanHostedService`.
+- `CaravanHostedService` starts the context on host start and stops it on host stop through the shutdown strategy (its timeout applies). When the host's
+  shutdown token fires first, it calls `DefaultShutdownStrategy.ForceShutdown()`: the graceful wait ends as on timeout, shutdown-aware consumers are
+  forced and `ShutdownToken` cancels inflight exchanges.
+- `healthChecks.AddCaravanHealthChecks()` adds `caravan-context` (tags `caravan`, `ready`, `live`), `caravan-routes`, `caravan-consumers`,
+  `caravan-circuit-breakers` and `caravan-components` (`caravan`, `ready`): Down → Unhealthy (the registration's failure status), Degraded/Unknown →
+  Degraded; data lists each Caravan check.
+
+`src/Caravan.OpenTelemetry` (OpenTelemetry.Api): `TracerProviderBuilder.AddCaravanInstrumentation()` / `MeterProviderBuilder.AddCaravanInstrumentation()`
+(`AddSource("Caravan")` / `AddMeter("Caravan")`); options stay on `context.Telemetry`.
 
 ### Endpoint URIs
 
@@ -849,6 +946,7 @@ Other conventions:
   `Caravan.Processors`, `Caravan.Support`, `Caravan.Impl`, `Caravan.Aggregation` (built-in aggregation strategies),
   `Caravan.LoadBalancing` (built-in load balancers), `Caravan.Idempotent` (idempotent repositories), `Caravan.Saga` (saga SPI and in-memory service),
   `Caravan.DataFormat` (built-in data formats and their registry), `Caravan.Streams` (stream caching),
-  `Caravan.Components.<Name>`; `Caravan.Testing` (the test kit project).
-- Tests: xUnit (`tests/Caravan.Core.Tests`, `tests/Caravan.Testing.Tests`), one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
+  `Caravan.Observability` (tracing, metrics, message history, tracers), `Caravan.Management` (management API), `Caravan.Health` (health checks),
+  `Caravan.Components.<Name>`; `Caravan.Testing` (the test kit project), `Caravan.Hosting` (Generic Host), `Caravan.OpenTelemetry`.
+- Tests: xUnit (`tests/Caravan.Core.Tests`, `tests/Caravan.Testing.Tests`, `tests/Caravan.Hosting.Tests`), one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
   expectation or `TimeProvider` can be used instead; keep the suite fast.

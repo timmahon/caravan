@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using Caravan.Health;
 using Caravan.Support;
 
 namespace Caravan.Components.Seda;
@@ -8,8 +9,9 @@ namespace Caravan.Components.Seda;
 /// <see cref="System.Threading.Channels"/>. Endpoints with the same name share one queue; its <c>size</c> is fixed
 /// by the first endpoint, and an endpoint giving another size fails, as in Camel.
 /// <para>URI: <c>seda:name[?options]</c> (see <see cref="SedaEndpoint"/> for the options)</para>
+/// <para>Health: one check per bounded queue (<c>seda:name</c>, group <c>components</c>), Degraded while the queue is full.</para>
 /// </summary>
-public class SedaComponent : ComponentBase
+public class SedaComponent : ComponentBase, IHealthCheckRepository
 {
     private readonly ConcurrentDictionary<string, SedaQueue> _queues = new(StringComparer.Ordinal);
 
@@ -36,6 +38,13 @@ public class SedaComponent : ComponentBase
 
     /// <summary>The queues by name; <c>vm</c> overrides it with a process-wide registry.</summary>
     internal virtual ConcurrentDictionary<string, SedaQueue> Queues => _queues;
+
+    /// <inheritdoc />
+    string IHealthCheckRepository.Id => Scheme;
+
+    /// <inheritdoc />
+    IEnumerable<IHealthCheck> IHealthCheckRepository.GetHealthChecks() =>
+        Queues.Values.Where(q => q.Size > 0).Select(q => new SedaQueueHealthCheck(Scheme, q));
 
     /// <inheritdoc />
     protected override EndpointBase CreateEndpoint(string uri, string remaining, IDictionary<string, string> parameters)

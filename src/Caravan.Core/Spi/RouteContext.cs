@@ -1,3 +1,5 @@
+using System.Collections.Concurrent;
+using Caravan.Management;
 using Caravan.Model;
 using Caravan.Processors;
 
@@ -10,6 +12,7 @@ namespace Caravan.Spi;
 public sealed class RouteContext
 {
     private readonly List<object> _services = [];
+    private int _processorOrder;
 
     /// <summary>Creates the state for building the route <paramref name="routeId"/>.</summary>
     public RouteContext(ICaravanContext context, RouteDefinition definition, string routeId)
@@ -80,6 +83,16 @@ public sealed class RouteContext
 
     /// <summary>Wraps each node with error handling (set by the error handling feature).</summary>
     public IErrorHandlerFactory? ErrorHandlerFactory { get; set; }
+
+    /// <summary>The route's performance counters (management, <c>controlbus</c> stats).</summary>
+    internal ProcessingCounters Counters { get; } = new();
+
+    /// <summary>The performance counters of the route's nodes, by definition (when node statistics are enabled).</summary>
+    internal ConcurrentDictionary<ProcessorDefinition, ProcessorCounters> ProcessorCounters { get; } = new(ReferenceEqualityComparer.Instance);
+
+    /// <summary>The counters of a node, created on first use.</summary>
+    internal ProcessorCounters GetProcessorCounters(ProcessorDefinition definition) =>
+        ProcessorCounters.GetOrAdd(definition, d => new ProcessorCounters(d, d.Id ?? d.ShortName, Interlocked.Increment(ref _processorOrder)));
 
     /// <summary>Registers a service started and stopped with the route (added once).</summary>
     public void AddService(object service)

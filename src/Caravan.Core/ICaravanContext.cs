@@ -1,4 +1,5 @@
 using Caravan.Builder;
+using Caravan.Management;
 using Caravan.Model;
 using Caravan.Spi;
 using Caravan.TypeConversion;
@@ -102,6 +103,36 @@ public interface ICaravanContext : IService, IAsyncDisposable
     /// large ones are spooled. Enabled by default; configure it before routes are created.
     /// </summary>
     Streams.StreamCachingStrategy StreamCaching { get; }
+
+    // Observability and management
+
+    /// <summary>OpenTelemetry-style tracing and metrics options (see <see cref="Observability.CaravanDiagnostics"/>).</summary>
+    Observability.TelemetryOptions Telemetry { get; }
+
+    /// <summary>
+    /// Whether every step of every exchange is logged by the <see cref="Tracer"/> (Camel's <c>tracing</c>, default false); shortcut for
+    /// <see cref="Observability.CaravanTracer.Enabled"/>. Turn it on before routes are created (or use the tracer's standby mode).
+    /// </summary>
+    bool Tracing { get; set; }
+
+    /// <summary>The tracer that logs exchange steps (Camel's <c>Tracer</c>).</summary>
+    Observability.CaravanTracer Tracer { get; }
+
+    /// <summary>The backlog tracer that keeps the last traced steps in memory (Camel's <c>BacklogTracer</c>).</summary>
+    Observability.BacklogTracer BacklogTracer { get; }
+
+    /// <summary>
+    /// Whether exchanges record their message history (route inputs and nodes with timings, Camel's <c>messageHistory</c>, default false) in
+    /// the <see cref="ExchangePropertyKeys.MessageHistory"/> property; error handlers then log it as a table when redelivery is exhausted. Set it
+    /// before routes are created.
+    /// </summary>
+    bool MessageHistory { get; set; }
+
+    /// <summary>The management API: statistics and operations (Camel's JMX MBeans).</summary>
+    IManagementService Management { get; }
+
+    /// <summary>The health checks of the context and its routes, consumers, circuit breakers and components (Camel's health-check registry).</summary>
+    Health.HealthCheckRegistry HealthChecks { get; }
 
     // Components
 

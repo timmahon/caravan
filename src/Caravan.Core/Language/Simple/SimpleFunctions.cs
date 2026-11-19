@@ -143,6 +143,10 @@ internal static class SimpleFunctions
                 return new DelegateNode(e => e.Context.Name, f);
             case "stepId":
                 return new DelegateNode(e => e.GetProperty(ExchangePropertyKeys.StepId), f);
+            case "messageHistory" or "messageHistory()" or "messageHistory(true)":
+                return new DelegateNode(e => Observability.MessageHistoryFormatter.Format(e, includeExchange: true), f);
+            case "messageHistory(false)":
+                return new DelegateNode(e => Observability.MessageHistoryFormatter.Format(e, includeExchange: false), f);
             case "exchange":
                 return new DelegateNode(e => e, f);
             case "exception":

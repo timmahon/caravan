@@ -25,6 +25,11 @@ public static class ExchangePropertyKeys
     public const string FilterMatched = "CaravanFilterMatched";
     /// <summary>When the exchange was created.</summary>
     public const string CreatedTimestamp = "CaravanCreatedTimestamp";
+    /// <summary>
+    /// The message history of the exchange (a <c>List&lt;Observability.MessageHistoryEntry&gt;</c>) when <see cref="ICaravanContext.MessageHistory"/> is
+    /// enabled.
+    /// </summary>
+    public const string MessageHistory = "CaravanMessageHistory";
     /// <summary>The id of the <c>step</c> the exchange is currently in.</summary>
     public const string StepId = "CaravanStepId";
     /// <summary>Overrides the endpoint's <see cref="WaitForTaskToComplete"/> for one exchange sent to <c>seda</c>.</summary>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Caravan.OpenTelemetry</RootNamespace>
+    <Description>OpenTelemetry registration helpers for Caravan: AddCaravanInstrumentation() on tracer and meter provider builders.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Api" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Caravan.Core\Caravan.Core.csproj" />
+  </ItemGroup>
+</Project>

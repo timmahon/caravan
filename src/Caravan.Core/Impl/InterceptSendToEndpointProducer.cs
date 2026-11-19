@@ -1,3 +1,4 @@
+using Caravan.Observability;
 using Caravan.Spi;
 using Caravan.Support;
 
@@ -9,7 +10,9 @@ namespace Caravan.Impl;
 /// </summary>
 internal sealed class InterceptSendToEndpointProducer(IProducer producer, SendToEndpointInterceptors interceptors) : ServiceSupport, IProducer
 {
+    private readonly Management.EndpointUsage? _usage = (producer.Endpoint.Context?.Management as Management.DefaultManagementService)?.GetUsage(producer.Endpoint);
     private volatile Chain? _chain;
+    private EndpointTelemetryInfo? _telemetryInfo;
 
     public IEndpoint Endpoint => producer.Endpoint;
 
@@ -17,6 +20,17 @@ internal sealed class InterceptSendToEndpointProducer(IProducer producer, SendTo
     public IProducer Producer => producer;
 
     public ValueTask ProcessAsync(Exchange exchange)
+    {
+        _usage?.IncrementOutbound();
+        if (ProducerTelemetry.IsActive(exchange.Context))
+        {
+            return ProducerTelemetry.SendAsync(SendCoreAsync, exchange, _telemetryInfo ??= new EndpointTelemetryInfo(producer.Endpoint));
+        }
+
+        return SendCoreAsync(exchange);
+    }
+
+    private ValueTask SendCoreAsync(Exchange exchange)
     {
         var (current, version) = interceptors.Snapshot();
         if (current.Length == 0)

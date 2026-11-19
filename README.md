@@ -30,6 +30,27 @@ Expressions can be C# lambdas or Camel's [Simple language](docs/ARCHITECTURE.md#
 (`${header.x}`, operators, OGNL, `${date:...}`, ternary/elvis), compiled once and cached; property placeholders (`{{key}}`) resolve from
 `IConfiguration`, dictionaries or environment variables.
 
+## Hosting and observability
+
+`Caravan.Hosting` runs a context in the .NET Generic Host: route builders come from dependency injection, options from the `Caravan`
+configuration section, and the context starts and stops (gracefully) with the host.
+
+```csharp
+var builder = Host.CreateApplicationBuilder(args);          // appsettings.json: { "Caravan": { "Name": "orders", "MessageHistory": true } }
+builder.Services.AddSingleton<IOrderStore, SqlOrderStore>();
+builder.Services.AddCaravan(o => o.ShutdownTimeout = TimeSpan.FromSeconds(20))
+    .AddRoutes<OrderRoutes>()                                // constructor-injected: OrderRoutes(IOrderStore store)
+    .AddRouteConfiguration<ErrorConfigurations>();
+builder.Services.AddHealthChecks().AddCaravanHealthChecks(); // caravan-context (live), caravan-routes, -consumers, ... (ready)
+builder.Services.AddOpenTelemetry()                         // Caravan.OpenTelemetry
+    .WithTracing(t => t.AddCaravanInstrumentation())         // or AddSource("Caravan")
+    .WithMetrics(m => m.AddCaravanInstrumentation());        // or AddMeter("Caravan")
+await builder.Build().RunAsync();                            // IProducerTemplate is injectable anywhere
+```
+
+Spans follow exchanges across routes, `seda` hops and transports (W3C `traceparent` headers); `context.Management` gives route and node
+statistics and operations, `context.Tracing`/`BacklogTracer` trace every step, and `MessageHistory` adds the route/node table to error logs.
+
 ## Testing your routes
 
 `Caravan.Testing` (no test framework dependency) brings Camel's test kit: a base class, `AdviceWith` to change routes for a

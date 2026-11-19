@@ -17,12 +17,24 @@ public sealed class RedeliveryErrorHandler : INavigableProcessor
 {
     private static readonly ExchangeFormatter Formatter = new() { ShowExchangeId = true, ShowHeaders = true, ShowBodyType = true, ShowBody = true, MaxChars = 1000 };
     private readonly RedeliveryErrorHandlerFactory _factory;
+    private readonly string? _routeId;
+    private readonly Management.ProcessingCounters? _routeCounters;
+    private readonly Management.ProcessingCounters? _nodeCounters;
 
-    internal RedeliveryErrorHandler(RedeliveryErrorHandlerFactory factory, ProcessorDefinition definition, IProcessor output)
+    internal RedeliveryErrorHandler(RedeliveryErrorHandlerFactory factory, ProcessorDefinition definition, IProcessor output, RouteContext? routeContext = null)
     {
         _factory = factory;
         Definition = definition;
         Output = output;
+        if (routeContext is not null)
+        {
+            _routeId = routeContext.RouteId;
+            _routeCounters = routeContext.Counters;
+            if (routeContext.Context.Management is Management.DefaultManagementService { NodeStatisticsEnabled: true })
+            {
+                _nodeCounters = routeContext.GetProcessorCounters(definition).Counters;
+            }
+        }
     }
 
     /// <summary>The wrapped node.</summary>
@@ -127,6 +139,9 @@ public sealed class RedeliveryErrorHandler : INavigableProcessor
                 }
             }
 
+            _routeCounters?.IncrementRedeliveries();
+            _nodeCounters?.IncrementRedeliveries();
+            Observability.CaravanMetrics.RecordRedelivery(exchange.Context, _routeId ?? exchange.CurrentRouteId);
             EventHelper.Notify(
                 exchange.Context,
                 new CaravanEvent(CaravanEventType.ExchangeRedelivery, exchange.Context)
@@ -316,6 +331,13 @@ public sealed class RedeliveryErrorHandler : INavigableProcessor
         }
 
         string outcome;
+        if (shouldContinue || shouldHandle || isDeadLetterChannel)
+        {
+            _routeCounters?.IncrementFailuresHandled();
+            _nodeCounters?.IncrementFailuresHandled();
+            Observability.CaravanMetrics.RecordFailureHandled(exchange.Context, _routeId ?? exchange.CurrentRouteId);
+        }
+
         if (shouldContinue)
         {
             RemoveRedeliveryHeaders(exchange);
@@ -387,7 +409,9 @@ public sealed class RedeliveryErrorHandler : INavigableProcessor
             return;
         }
 
-        var details = redelivery.LogExhaustedExchange ? Formatter.Format(exchange) : string.Empty;
+        var details = redelivery.LogExhaustedMessageHistory && exchange.GetProperty(ExchangePropertyKeys.MessageHistory) is not null
+            ? Observability.MessageHistoryFormatter.Format(exchange, redelivery.LogExhaustedExchange, Formatter)
+            : redelivery.LogExhaustedExchange ? Formatter.Format(exchange) : string.Empty;
         if (rollback)
         {
             logger.Log(

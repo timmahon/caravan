@@ -99,6 +99,13 @@ public static class RedeliveryDsl
     public static T LogExhaustedExchange<T>(this T target, bool enabled = true)
         where T : IRedeliveryPolicyAware => Set(target, p => p.LogExhaustedExchange = enabled);
 
+    /// <summary>
+    /// Whether the message history table is included when logging an exhausted failure (default true; requires
+    /// <see cref="ICaravanContext.MessageHistory"/>).
+    /// </summary>
+    public static T LogExhaustedMessageHistory<T>(this T target, bool enabled = true)
+        where T : IRedeliveryPolicyAware => Set(target, p => p.LogExhaustedMessageHistory = enabled);
+
     private static T Set<T>(T target, Action<RedeliveryPolicyDefinition> set)
         where T : IRedeliveryPolicyAware
     {
