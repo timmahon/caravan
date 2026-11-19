@@ -1,4 +1,6 @@
+using Caravan.Components.Rest;
 using Caravan.Model;
+using Caravan.Model.Rest;
 
 namespace Caravan.Builder;
 
@@ -29,6 +31,7 @@ public abstract class RouteBuilder : IRoutesBuilder
     private readonly List<RouteTemplateDefinition> _templates = [];
     private readonly List<TemplatedRouteDefinition> _templatedRoutes = [];
     private readonly List<RouteConfigurationDefinition> _routeConfigurations = [];
+    private readonly List<RestDefinition> _rests = [];
     private ErrorHandlerDefinition? _errorHandler;
     private ICaravanContext? _context;
 
@@ -45,6 +48,46 @@ public abstract class RouteBuilder : IRoutesBuilder
         var route = new RouteDefinition(uri);
         _routes.Add(route);
         return new RouteDefinitionBuilder(route);
+    }
+
+    /// <summary>The REST definitions defined by the last <see cref="Build"/> (their routes are among the built routes).</summary>
+    public IReadOnlyList<RestDefinition> RestDefinitions => _rests;
+
+    /// <summary>
+    /// Defines a REST API (Camel's <c>rest</c>): <c>Rest("/api/orders", r =&gt; r.Get("/{id}", v =&gt; v.Produces("application/json").To("direct:getOrder")))</c>.
+    /// Each service becomes a route consuming from <c>rest:method:path:uriTemplate</c> (served by the component of the
+    /// <see cref="Model.Rest.RestConfiguration"/>, e.g. <c>platform-http</c>) with the binding of the configuration; a service sending to a
+    /// <c>direct</c> route of this builder is merged with it unless <see cref="Model.Rest.RestConfiguration.InlineRoutes"/> is off.
+    /// </summary>
+    /// <param name="path">The base path, or null.</param>
+    /// <param name="configure">Configures the API and its services.</param>
+    /// <returns>The definition.</returns>
+    public RestDefinition Rest(string? path, Action<RestBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        var definition = new RestDefinition { Path = path };
+        configure(new RestBuilder(definition));
+        _rests.Add(definition);
+        return definition;
+    }
+
+    /// <summary>Defines a REST API without base path (services give full paths).</summary>
+    /// <param name="configure">Configures the API and its services.</param>
+    /// <returns>The definition.</returns>
+    public RestDefinition Rest(Action<RestBuilder> configure) => Rest(null, configure);
+
+    /// <summary>
+    /// Changes the context's REST configuration (Camel's <c>restConfiguration()</c>, context-wide): component, context path, binding mode,
+    /// CORS, OpenAPI path and properties... Only available inside <see cref="Configure"/>.
+    /// </summary>
+    /// <param name="configure">Changes the configuration.</param>
+    /// <returns>The configuration.</returns>
+    public Model.Rest.RestConfiguration RestConfiguration(Action<RestConfigurationBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        var configuration = Context.GetRestConfiguration();
+        configure(new RestConfigurationBuilder(configuration));
+        return configuration;
     }
 
     /// <summary>The route templates defined by the last <see cref="Build"/>.</summary>
@@ -235,8 +278,10 @@ public abstract class RouteBuilder : IRoutesBuilder
             _templates.Clear();
             _templatedRoutes.Clear();
             _routeConfigurations.Clear();
+            _rests.Clear();
             _errorHandler = null;
             Configure();
+            RestRouteFactory.AddRoutes(_rests, _routes, context.GetRestConfiguration().InlineRoutes);
             ApplyBuilderConfiguration();
             foreach (var hook in context.GetExtension<RouteBuilderHooks>()?.Hooks ?? [])
             {

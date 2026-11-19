@@ -67,6 +67,11 @@ internal static class TypeResolver
             return type;
         }
 
+        if (name.EndsWith("[]", StringComparison.Ordinal))
+        {
+            return Resolve(context, name[..^2])?.MakeArrayType();
+        }
+
         try
         {
             return context.TypeConverter.Convert(typeof(Type), null, name) as Type;

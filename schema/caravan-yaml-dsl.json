@@ -56,6 +56,14 @@
       "interceptSendToEndpoint": {
         "$ref": "#/definitions/interceptSendToEndpoint",
         "description": "Intercepts sends to matching endpoints."
+      },
+      "rest": {
+        "$ref": "#/definitions/rest",
+        "description": "A REST API: services (get, post, ...) each becoming a route."
+      },
+      "restConfiguration": {
+        "$ref": "#/definitions/restConfiguration",
+        "description": "The context's REST configuration."
       }
     },
     "additionalProperties": false,
@@ -1484,6 +1492,1208 @@
                 "boolean"
               ],
               "description": "Accepted for compatibility with Camel; no effect in Caravan (redelivery policies have no id)."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "rest": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The id."
+            },
+            "description": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A description."
+            },
+            "path": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The base path of the services."
+            },
+            "tag": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The OpenAPI tag."
+            },
+            "consumes": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The media types accepted by default."
+            },
+            "produces": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The media types produced by default."
+            },
+            "bindingMode": {
+              "type": "string",
+              "enum": [
+                "off",
+                "auto",
+                "json",
+                "xml",
+                "json_xml"
+              ],
+              "description": "The binding mode of the services."
+            },
+            "skipBindingOnErrorCode": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether responses with a code of 300 or more are not bound."
+            },
+            "clientRequestValidation": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether requests are validated."
+            },
+            "enableCORS": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether CORS headers are added."
+            },
+            "enableCors": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Alias of enableCORS."
+            },
+            "apiDocs": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether the services are in the OpenAPI document (default true)."
+            },
+            "disabled": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether the whole rest is disabled."
+            },
+            "securityDefinitions": {
+              "anyOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "basicAuth": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "The key services refer to."
+                          },
+                          "description": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "A description."
+                          },
+                          "format": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "bearerToken: the token format, e.g. JWT."
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "apiKey: the name of the header, query parameter or cookie."
+                          },
+                          "inHeader": {
+                            "type": [
+                              "boolean",
+                              "string"
+                            ],
+                            "description": "apiKey: the key is a header."
+                          },
+                          "inQuery": {
+                            "type": [
+                              "boolean",
+                              "string"
+                            ],
+                            "description": "apiKey: the key is a query parameter."
+                          },
+                          "inCookie": {
+                            "type": [
+                              "boolean",
+                              "string"
+                            ],
+                            "description": "apiKey: the key is a cookie."
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "key"
+                        ]
+                      },
+                      "description": "HTTP basic authentication schemes."
+                    },
+                    "bearerToken": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "The key services refer to."
+                          },
+                          "description": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "A description."
+                          },
+                          "format": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "bearerToken: the token format, e.g. JWT."
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "apiKey: the name of the header, query parameter or cookie."
+                          },
+                          "inHeader": {
+                            "type": [
+                              "boolean",
+                              "string"
+                            ],
+                            "description": "apiKey: the key is a header."
+                          },
+                          "inQuery": {
+                            "type": [
+                              "boolean",
+                              "string"
+                            ],
+                            "description": "apiKey: the key is a query parameter."
+                          },
+                          "inCookie": {
+                            "type": [
+                              "boolean",
+                              "string"
+                            ],
+                            "description": "apiKey: the key is a cookie."
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "key"
+                        ]
+                      },
+                      "description": "HTTP bearer token schemes."
+                    },
+                    "apiKey": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "The key services refer to."
+                          },
+                          "description": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "A description."
+                          },
+                          "format": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "bearerToken: the token format, e.g. JWT."
+                          },
+                          "name": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "apiKey: the name of the header, query parameter or cookie."
+                          },
+                          "inHeader": {
+                            "type": [
+                              "boolean",
+                              "string"
+                            ],
+                            "description": "apiKey: the key is a header."
+                          },
+                          "inQuery": {
+                            "type": [
+                              "boolean",
+                              "string"
+                            ],
+                            "description": "apiKey: the key is a query parameter."
+                          },
+                          "inCookie": {
+                            "type": [
+                              "boolean",
+                              "string"
+                            ],
+                            "description": "apiKey: the key is a cookie."
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "key"
+                        ]
+                      },
+                      "description": "API key schemes."
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              ],
+              "description": "The security schemes."
+            },
+            "securityRequirements": {
+              "type": "array",
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "object",
+                    "properties": {
+                      "key": {
+                        "type": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ],
+                        "description": "The key of a security definition."
+                      },
+                      "scopes": {
+                        "type": [
+                          "string",
+                          "number",
+                          "boolean"
+                        ],
+                        "description": "The scopes required, comma-separated."
+                      }
+                    },
+                    "additionalProperties": false,
+                    "required": [
+                      "key"
+                    ]
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "securityRequirement": {
+                        "type": "object",
+                        "properties": {
+                          "key": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "The key of a security definition."
+                          },
+                          "scopes": {
+                            "type": [
+                              "string",
+                              "number",
+                              "boolean"
+                            ],
+                            "description": "The scopes required, comma-separated."
+                          }
+                        },
+                        "additionalProperties": false,
+                        "required": [
+                          "key"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "securityRequirement"
+                    ],
+                    "additionalProperties": false
+                  }
+                ]
+              },
+              "description": "The security requirements of every service."
+            },
+            "get": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/restVerb"
+              },
+              "description": "GET services."
+            },
+            "post": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/restVerb"
+              },
+              "description": "POST services."
+            },
+            "put": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/restVerb"
+              },
+              "description": "PUT services."
+            },
+            "patch": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/restVerb"
+              },
+              "description": "PATCH services."
+            },
+            "delete": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/restVerb"
+              },
+              "description": "DELETE services."
+            },
+            "head": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/restVerb"
+              },
+              "description": "HEAD services."
+            },
+            "options": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/restVerb"
+              },
+              "description": "Caravan: OPTIONS services."
+            },
+            "enableNoContentResponse": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (an empty body is always answered with 204)."
+            },
+            "streamCache": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (stream caching is a context and route option)."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "restConfiguration": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "component": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The component serving REST services (default platform-http)."
+            },
+            "scheme": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The scheme (OpenAPI servers)."
+            },
+            "host": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The host (OpenAPI servers)."
+            },
+            "port": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "The port (OpenAPI servers)."
+            },
+            "contextPath": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A path prepended to every service."
+            },
+            "apiContextPath": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The path of the OpenAPI document (under contextPath)."
+            },
+            "bindingMode": {
+              "type": "string",
+              "enum": [
+                "off",
+                "auto",
+                "json",
+                "xml",
+                "json_xml"
+              ],
+              "description": "The binding mode (default off)."
+            },
+            "skipBindingOnErrorCode": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether responses with a code of 300 or more are not bound (default true)."
+            },
+            "clientRequestValidation": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether requests are validated (default false)."
+            },
+            "enableCORS": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether CORS headers are added (default false)."
+            },
+            "enableCors": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Alias of enableCORS."
+            },
+            "inlineRoutes": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether direct routes are merged into their service (default true)."
+            },
+            "jsonDataFormat": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The data format binding JSON (default json)."
+            },
+            "xmlDataFormat": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The data format binding XML (default xml)."
+            },
+            "dataFormatProperty": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The key."
+                  },
+                  "value": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The value."
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "key",
+                  "value"
+                ]
+              },
+              "description": "Properties of the binding data formats (json.in., json.out., xml.in., xml.out. prefixes)."
+            },
+            "endpointProperty": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The key."
+                  },
+                  "value": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The value."
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "key",
+                  "value"
+                ]
+              },
+              "description": "Options of the consumers serving the services."
+            },
+            "apiProperty": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The key."
+                  },
+                  "value": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The value."
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "key",
+                  "value"
+                ]
+              },
+              "description": "OpenAPI properties (api.title, api.version, api.description...)."
+            },
+            "corsHeaders": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The key."
+                  },
+                  "value": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The value."
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "key",
+                  "value"
+                ]
+              },
+              "description": "CORS headers overriding the defaults."
+            },
+            "apiComponent": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (the OpenAPI document is served by Caravan.AspNetCore)."
+            },
+            "producerComponent": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (there is no REST producer)."
+            },
+            "producerApiDoc": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (there is no REST producer)."
+            },
+            "apiHost": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (use host)."
+            },
+            "apiContextRouteId": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (the OpenAPI document is not a route)."
+            },
+            "apiVendorExtension": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (no vendor extensions are written)."
+            },
+            "useXForwardHeaders": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (use ASP.NET Core's forwarded headers middleware)."
+            },
+            "hostNameResolver": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (the host decides)."
+            },
+            "bindingPackageScan": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (types are given by name)."
+            },
+            "enableNoContentResponse": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (an empty body is always answered with 204)."
+            },
+            "componentProperty": {
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (configure the component in code)."
+            },
+            "consumerProperty": {
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (use endpointProperty)."
+            }
+          },
+          "additionalProperties": false
+        }
+      ]
+    },
+    "restVerb": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The id of the service (also the route id unless routeId is set)."
+            },
+            "routeId": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The id of the route created for the service."
+            },
+            "description": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A description (the OpenAPI summary)."
+            },
+            "path": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The path relative to the rest's path, with {name} parameters."
+            },
+            "uri": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "Alias of path."
+            },
+            "consumes": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The media types accepted (comma-separated)."
+            },
+            "produces": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The media types produced (comma-separated)."
+            },
+            "type": {
+              "type": "string",
+              "description": "The type the request body is bound to (Type[] for a list)."
+            },
+            "outType": {
+              "type": "string",
+              "description": "The type of the response body."
+            },
+            "bindingMode": {
+              "type": "string",
+              "enum": [
+                "off",
+                "auto",
+                "json",
+                "xml",
+                "json_xml"
+              ],
+              "description": "The binding mode."
+            },
+            "skipBindingOnErrorCode": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether responses with a code of 300 or more are not bound."
+            },
+            "clientRequestValidation": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether requests are validated (415, 406, 400)."
+            },
+            "enableCORS": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether CORS headers are added."
+            },
+            "enableCors": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Alias of enableCORS."
+            },
+            "apiDocs": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether the service is in the OpenAPI document (default true)."
+            },
+            "deprecated": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether the service is deprecated."
+            },
+            "disabled": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether the service is disabled (no route is created)."
+            },
+            "to": {
+              "anyOf": [
+                {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ]
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "uri": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ],
+                      "description": "The endpoint URI."
+                    },
+                    "parameters": {
+                      "type": [
+                        "object",
+                        "null"
+                      ],
+                      "description": "Endpoint options appended to the URI as query parameters."
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "uri"
+                  ]
+                }
+              ],
+              "description": "The endpoint requests are sent to."
+            },
+            "steps": {
+              "$ref": "#/definitions/steps",
+              "description": "Caravan: the steps of an inline route (instead of to)."
+            },
+            "param": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The parameter name."
+                  },
+                  "type": {
+                    "type": "string",
+                    "enum": [
+                      "path",
+                      "query",
+                      "header",
+                      "body",
+                      "formData"
+                    ],
+                    "description": "Where the parameter is (default path)."
+                  },
+                  "required": {
+                    "type": [
+                      "boolean",
+                      "string"
+                    ],
+                    "description": "Whether it is required (default true)."
+                  },
+                  "defaultValue": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "A default value (set as a header when a query parameter is missing)."
+                  },
+                  "dataType": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The OpenAPI data type (default string)."
+                  },
+                  "dataFormat": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The OpenAPI format, e.g. int64."
+                  },
+                  "arrayType": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The element type of an array parameter."
+                  },
+                  "allowableValues": {
+                    "description": "The values allowed: a list of strings or of { value: ... }."
+                  },
+                  "description": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "A description."
+                  },
+                  "collectionFormat": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "Accepted for compatibility with Camel; no effect in Caravan (OpenAPI 2 only)."
+                  },
+                  "examples": {
+                    "description": "Accepted for compatibility with Camel; no effect in Caravan (examples are not documented)."
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "name"
+                ]
+              },
+              "description": "The parameters."
+            },
+            "responseMessage": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The status code, or default (default 200)."
+                  },
+                  "message": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The description."
+                  },
+                  "responseModel": {
+                    "type": "string",
+                    "description": "The type of the body."
+                  },
+                  "header": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "name": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The header name."
+                        },
+                        "description": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "A description."
+                        },
+                        "dataType": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The OpenAPI data type (default string)."
+                        },
+                        "dataFormat": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The OpenAPI format."
+                        },
+                        "allowableValues": {
+                          "description": "The values allowed."
+                        },
+                        "arrayType": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "Accepted for compatibility with Camel; no effect in Caravan (array headers are documented as strings)."
+                        },
+                        "collectionFormat": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "Accepted for compatibility with Camel; no effect in Caravan (OpenAPI 2 only)."
+                        },
+                        "example": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "Accepted for compatibility with Camel; no effect in Caravan (examples are not documented)."
+                        }
+                      },
+                      "additionalProperties": false,
+                      "required": [
+                        "name"
+                      ]
+                    },
+                    "description": "The response headers."
+                  },
+                  "examples": {
+                    "description": "Accepted for compatibility with Camel; no effect in Caravan (examples are not documented)."
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "message"
+                ]
+              },
+              "description": "The documented responses."
+            },
+            "security": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "key": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The key of a security definition."
+                  },
+                  "scopes": {
+                    "type": [
+                      "string",
+                      "number",
+                      "boolean"
+                    ],
+                    "description": "The scopes required, comma-separated."
+                  }
+                },
+                "additionalProperties": false,
+                "required": [
+                  "key"
+                ]
+              },
+              "description": "The security requirements."
+            },
+            "enableNoContentResponse": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (an empty body is always answered with 204)."
+            },
+            "streamCache": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (stream caching is a context and route option)."
             }
           },
           "additionalProperties": false

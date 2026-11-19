@@ -60,7 +60,7 @@ internal sealed class YamlDslLoader(YamlRoutesBuilder builder, LoadContext conte
     {
         if (item is not YamlMappingNode { Children.Count: 1 } mapping || mapping.Children.First().Key is not YamlScalarNode { Value: { } raw } key)
         {
-            throw context.Error(item, "Each element must be an object with exactly one key: route, from, routeTemplate, templatedRoute, routeConfiguration, beans, errorHandler, intercept, interceptFrom, interceptSendToEndpoint, onException or onCompletion");
+            throw context.Error(item, "Each element must be an object with exactly one key: route, from, routeTemplate, templatedRoute, routeConfiguration, rest, restConfiguration, beans, errorHandler, intercept, interceptFrom, interceptSendToEndpoint, onException or onCompletion");
         }
 
         var name = NameConverter.ToCamelCase(raw);
@@ -98,6 +98,12 @@ internal sealed class YamlDslLoader(YamlRoutesBuilder builder, LoadContext conte
                 break;
             case "routeConfiguration":
                 LoadRouteConfiguration(element.Object("routeConfiguration")!);
+                break;
+            case "rest":
+                RestCatalog.FillRest(element.Object("rest")!, builder.Rest(null, _ => { }));
+                break;
+            case "restConfiguration":
+                builder.RestConfiguration(c => RestCatalog.FillConfiguration(element.Object("restConfiguration")!, c.Configuration));
                 break;
             case "errorHandler":
                 builder.ErrorHandler(ModelCatalog.BuildErrorHandler(element.Object("errorHandler")!));

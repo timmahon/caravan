@@ -11,6 +11,7 @@ using Caravan.Components.Kamelet;
 using Caravan.Components.Log;
 using Caravan.Components.Mock;
 using Caravan.Components.Ref;
+using Caravan.Components.Rest;
 using Caravan.Components.Saga;
 using Caravan.Components.Scheduler;
 using Caravan.Components.Seda;
@@ -82,6 +83,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         RegisterGlobalComponent("browse", () => new BrowseComponent());
         RegisterGlobalComponent("kamelet", () => new KameletComponent());
         RegisterGlobalComponent("file", () => new FileComponent());
+        RegisterGlobalComponent("rest", () => new RestComponent());
     }
 
     /// <summary>Creates a context.</summary>

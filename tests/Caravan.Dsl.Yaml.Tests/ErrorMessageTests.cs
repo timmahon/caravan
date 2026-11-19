@@ -62,7 +62,7 @@ public class ErrorMessageTests : YamlTestBase
     [InlineData("- from: { uri: direct:a, steps: [ { toD: { uri: x, variableSend: v } } ] }", "Option 'variableSend' of 'toD' is not supported by Caravan: variables are not supported")]
     [InlineData("- from: { uri: direct:a, steps: [ { to: x, log: y } ] }", "A step must be an object with exactly one key")]
     [InlineData("- from: { uri: direct:a, steps: { to: x } }", "'steps' must be a list of steps")]
-    [InlineData("- rest: { path: /api }", "'rest' is not supported by Caravan: the REST DSL is not supported yet")]
+    [InlineData("- camelContext: { }", "'camelContext' is not supported by Caravan")]
     [InlineData("- setBody: { constant: x }", "Unknown top-level element 'setBody' ('setBody' is a step: put it in the steps of a route)")]
     [InlineData("route: { from: { uri: direct:a } }", "A YAML DSL document must be a list of elements")]
     [InlineData("- from: { uri: direct:a, steps: [ { aggregate: { correlationExpression: x, aggregationStrategy: s } } ] }", "'aggregate.correlationExpression' must be an object with one expression")]

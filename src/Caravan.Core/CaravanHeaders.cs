@@ -89,4 +89,31 @@ public static class CaravanHeaders
     /// <c>file</c> component itself never sets it.
     /// </summary>
     public const string FileLocalWorkPath = "CaravanFileLocalWorkPath";
+
+    /// <summary>The HTTP method of the request, e.g. <c>GET</c> (Camel's <c>CamelHttpMethod</c>).</summary>
+    public const string HttpMethod = "CaravanHttpMethod";
+
+    /// <summary>The request URI: the path as received, without the query (Camel's <c>CamelHttpUri</c>).</summary>
+    public const string HttpUri = "CaravanHttpUri";
+
+    /// <summary>The full request URL (Camel's <c>CamelHttpUrl</c>).</summary>
+    public const string HttpUrl = "CaravanHttpUrl";
+
+    /// <summary>The request path (Camel's <c>CamelHttpPath</c>); with <c>matchOnUriPrefix</c>, the part after the endpoint's path.</summary>
+    public const string HttpPath = "CaravanHttpPath";
+
+    /// <summary>The decoded query string, without <c>?</c> (Camel's <c>CamelHttpQuery</c>).</summary>
+    public const string HttpQuery = "CaravanHttpQuery";
+
+    /// <summary>The query string as received, without <c>?</c> (Camel's <c>CamelHttpRawQuery</c>).</summary>
+    public const string HttpRawQuery = "CaravanHttpRawQuery";
+
+    /// <summary>The HTTP status code of the response, an <see cref="int"/> (Camel's <c>CamelHttpResponseCode</c>).</summary>
+    public const string HttpResponseCode = "CaravanHttpResponseCode";
+
+    /// <summary>The reason phrase of the response, if any (Camel's <c>CamelHttpResponseText</c>).</summary>
+    public const string HttpResponseText = "CaravanHttpResponseText";
+
+    /// <summary>The <c>Accept</c> request header.</summary>
+    public const string Accept = "Accept";
 }
