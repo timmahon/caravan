@@ -12,7 +12,8 @@ namespace Caravan.Components.Mock;
 /// await mock.AssertIsSatisfiedAsync();
 /// </code>
 /// </summary>
-public sealed class MockEndpoint(string uri, MockComponent component, string name)
+/// <remarks>Derived endpoints (e.g. <c>dataset</c>) check each received exchange in <see cref="PerformAssertionsAsync"/>.</remarks>
+public class MockEndpoint(string uri, IComponent component, string name)
     : EndpointBase(uri, component, component.Context!)
 {
     private readonly object _lock = new();
@@ -608,6 +609,15 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
         return expectations.Select(e => e(this)).FirstOrDefault(r => r is not null);
     }
 
+    /// <summary>
+    /// Checks a received exchange before it is recorded (Camel's <c>performAssertions</c>). An exception fails the exchange and the endpoint's
+    /// assertion (<see cref="AssertIsSatisfiedAsync(TimeSpan?)"/>). Does nothing by default.
+    /// </summary>
+    /// <param name="exchange">The received exchange.</param>
+    /// <param name="index">The zero-based index of the exchange among those received.</param>
+    /// <returns>A task completed when checked.</returns>
+    protected virtual ValueTask PerformAssertionsAsync(Exchange exchange, int index) => ValueTask.CompletedTask;
+
     internal async ValueTask OnExchangeAsync(Exchange exchange)
     {
         int index;
@@ -623,6 +633,20 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
 
         try
         {
+            try
+            {
+                await PerformAssertionsAsync(exchange, index).ConfigureAwait(false);
+            }
+            catch (Exception e)
+            {
+                lock (_lock)
+                {
+                    _failure ??= e;
+                }
+
+                throw;
+            }
+
             var processor = _processorsByIndex.GetValueOrDefault(index) ?? _defaultProcessor;
             if (processor is not null)
             {

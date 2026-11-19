@@ -61,6 +61,22 @@ public interface ICaravanContext : IService, IAsyncDisposable
     /// <exception cref="NoSuchLanguageException">There is no such language.</exception>
     ILanguage ResolveLanguage(string name);
 
+    /// <summary>The data formats of the context (see <see cref="ResolveDataFormat"/>).</summary>
+    DataFormat.DataFormatRegistry DataFormats { get; }
+
+    /// <summary>
+    /// The data format named <paramref name="name"/> (<c>json</c>, <c>xml</c>, <c>csv</c>, <c>base64</c>, <c>gzipDeflater</c>, <c>zipDeflater</c>,
+    /// <c>string</c>, or one added to <see cref="DataFormats"/> or bound in the registry), used by <c>marshal</c>/<c>unmarshal</c>.
+    /// </summary>
+    /// <exception cref="NoSuchDataFormatException">There is no such data format.</exception>
+    IDataFormat ResolveDataFormat(string name);
+
+    /// <summary>
+    /// Stream caching (Camel's stream caching strategy): whether routes cache stream bodies so they can be read several times, and where
+    /// large ones are spooled. Enabled by default; configure it before routes are created.
+    /// </summary>
+    Streams.StreamCachingStrategy StreamCaching { get; }
+
     // Components
 
     /// <summary>Registers a component instance for <paramref name="scheme"/>.</summary>

@@ -67,7 +67,7 @@ public sealed class ExchangeFormatter
 
         if (ShowAll || ShowBody)
         {
-            parts.Add($"Body: {FormatBody(exchange.Message.Body)}");
+            parts.Add($"Body: {FormatBody(exchange, exchange.Message.Body)}");
         }
 
         if ((ShowAll || ShowException) && exchange.Exception is { } e)
@@ -81,13 +81,14 @@ public sealed class ExchangeFormatter
         return prefix + string.Join(separator, parts) + suffix;
     }
 
-    private string FormatBody(object? body)
+    private string FormatBody(Exchange exchange, object? body)
     {
         var text = body switch
         {
             null => "[Body is null]",
             string s => s,
             byte[] bytes => Encoding.UTF8.GetString(bytes),
+            Spi.IStreamCache => ObjectHelper.ToText(exchange, body) ?? string.Empty,
             Stream => "[Body is instance of Stream]",
             IDictionary dict => FormatMap(dict.Cast<DictionaryEntry>().ToDictionary(d => d.Key.ToString()!, d => d.Value)),
             IEnumerable e => "[" + string.Join(", ", e.Cast<object?>()) + "]",

@@ -5,10 +5,13 @@ namespace Caravan.Processors;
 
 /// <summary>
 /// Wraps each node in a route. Records exceptions thrown by the node on the exchange and skips the
-/// node when the exchange has been stopped. Feature-specific behaviour is added through intercept strategies.
+/// node when the exchange has been stopped. When the route caches streams, a stream body is turned into a stream cache, or a stream
+/// cache body reset, before the node runs. Feature-specific behaviour is added through intercept strategies.
 /// </summary>
 public sealed class Channel(RouteContext routeContext, ProcessorDefinition definition, IProcessor next) : INavigableProcessor
 {
+    private readonly Streams.StreamCachingStrategy? _streamCaching = routeContext.StreamCachingStrategy;
+
     /// <summary>The route the node belongs to.</summary>
     public RouteContext RouteContext { get; } = routeContext;
 
@@ -31,6 +34,11 @@ public sealed class Channel(RouteContext routeContext, ProcessorDefinition defin
 
         try
         {
+            if (_streamCaching is not null && exchange.Message.Body is Stream)
+            {
+                await _streamCaching.CacheAsync(exchange).ConfigureAwait(false);
+            }
+
             await Target.ProcessAsync(exchange).ConfigureAwait(false);
         }
         catch (Exception e)

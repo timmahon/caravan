@@ -39,6 +39,33 @@ public class DslOverloadTests : ContextTestBase
     }
 
     [Fact]
+    public void Bean_and_data_format_overloads_bind_to_a_single_overload()
+    {
+        var route = RouteBuilder.Create(b => b.From("direct:start")
+            .Bean(new object())
+            .Bean(new object(), "m")
+            .Bean(typeof(object))
+            .Bean(typeof(object), "m", BeanScope.Prototype)
+            .Bean("name")
+            .Bean("name", "m")
+            .Bean("name", scope: BeanScope.Request)
+            .Marshal("json")
+            .Marshal(DataFormats.Json())
+            .Unmarshal("json")
+            .Unmarshal(DataFormats.Json<Order>(), allowNullBody: true)
+            .Unmarshal("csv", true)
+            .SetBody(Expr.Method("name", "m"))
+            .SetBody(Expr.Method(new object(), "m"))
+            .SetBody(Expr.Method(typeof(object))))
+            .Build(Context).Single();
+
+        Assert.Equal(15, route.Outputs.Count);
+        Assert.IsType<Model.BeanDefinition>(route.Outputs[2]);
+        Assert.Equal(typeof(object), ((Model.BeanDefinition)route.Outputs[2]).BeanType);
+        Assert.Equal("name", ((Model.BeanDefinition)route.Outputs[4]).Ref);
+    }
+
+    [Fact]
     public void Simple_and_lang_helpers_bind_to_a_single_overload()
     {
         var route = RouteBuilder.Create(b => b.From("direct:start")

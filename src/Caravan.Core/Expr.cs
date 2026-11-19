@@ -178,4 +178,25 @@ public static class Expr
 
     /// <summary>Returns <paramref name="value"/> itself when it is an <see cref="IExpression"/>, otherwise a constant expression for it.</summary>
     public static IExpression Of(object? value) => value as IExpression ?? Constant(value);
+
+    /// <summary>
+    /// The result of a method of the registry bean <paramref name="beanName"/> (Camel's <c>method("bean", "name")</c>); the method is chosen
+    /// and bound as by the <c>bean</c> EIP. See <see cref="Language.BeanExpression"/>.
+    /// </summary>
+    public static IExpression Method(string beanName, string? method = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(beanName);
+        return new Language.BeanExpression(Components.Bean.BeanHolder.ForName(beanName), method, method is null ? beanName : $"{beanName}?method={method}");
+    }
+
+    /// <summary>
+    /// The result of a method of <paramref name="bean"/> (a <see cref="Type"/> is instantiated as by <c>.Bean(type)</c>, or its static methods
+    /// called) (Camel's <c>method(bean, "name")</c>).
+    /// </summary>
+    public static IExpression Method(object bean, string? method = null)
+    {
+        ArgumentNullException.ThrowIfNull(bean);
+        var holder = bean is Type type ? Components.Bean.BeanHolder.ForType(type) : Components.Bean.BeanHolder.ForInstance(bean);
+        return new Language.BeanExpression(holder, method, method is null ? holder.ToString() : $"{holder}?method={method}");
+    }
 }

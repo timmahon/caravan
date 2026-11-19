@@ -56,6 +56,9 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `ILanguage` / `LanguageRegistry` / `ICaravanContext.ResolveLanguage` | Expression languages by name (see "Languages and the Simple language") | `Language` / `CamelContext.resolveLanguage` |
 | `SimpleLanguage`, `Expr.Simple`, `Pred.Simple`, `Lang.Simple` | The Simple language | `SimpleLanguage`, `simple()` |
 | `IPropertiesComponent` / `DefaultPropertiesComponent` | `{{placeholder}}` resolution (see "Properties") | `PropertiesComponent` |
+| `IDataFormat` / `DataFormatRegistry` / `ICaravanContext.ResolveDataFormat` | `marshal`/`unmarshal` and the `dataformat` component (see "Data formats") | `DataFormat` / `CamelContext.resolveDataFormat` |
+| `StreamCachingStrategy` / `IStreamCache` | Re-readable stream bodies (see "Stream caching") | `StreamCachingStrategy` / `StreamCache` |
+| `BeanProcessor` / `BeanExpression` | The `bean` EIP, `bean`/`class` components, `bean`/`method` language (see "Bean binding") | `BeanProcessor` / `BeanExpression` |
 
 ### Error semantics
 
@@ -440,7 +443,7 @@ needs the test framework to call `SetUpAsync`.
 `context.ResolveLanguage(name)` (`LanguageRegistry`, `ICaravanContext.Languages`): languages added to the context (`Languages.Add`), then an
 `ILanguage` bean bound under the name, then global ones (`LanguageRegistry.RegisterGlobal`). Built-ins (`Caravan.Language`): `simple`,
 `constant` (the text), `header` and `exchangeProperty` (the named value), `tokenize` (the body tokenized on the text), `ref` (a registry
-`IExpression`/`IPredicate`, looked up when evaluated). DSLs that read routes from text (YAML, row 14) resolve expressions this way.
+`IExpression`/`IPredicate`, looked up when evaluated), `bean`/`method` (a bean method's result, see "Bean binding"). DSLs that read routes from text (YAML, row 14) resolve expressions this way.
 `Lang` (`using static Caravan.Builder.Lang;`) has terse factories: `Simple(text)`, `Constant`, `Body`, `Header`, `ExchangeProperty`,
 `Tokenize`, `Language(name, text)`.
 
@@ -489,7 +492,8 @@ resolved text is compiled and cached), so they work in `log`, `toD`, `setBody(si
   (nestable) and the elvis `${header.x ?: 'default'}` (the fallback when the value is null, empty or `false`). A function text is split on
   these operators only when one appears as a separate word, so `${date:now:dd MMM yyyy}` stays one function.
 - **Extension point**: `SimpleLanguage.RegisterFunction(prefix, remainder => IExpression)` adds `${prefix:...}` functions; the `bean:`
-  function will be registered this way by the bean component (row 11) and fails to parse until then.
+  function (`${bean:name?method=foo}`, `${bean:name.foo}`, `${bean:class:Full.Type?method=foo}`) is registered this way by `SimpleLanguage`'s
+  static constructor (`BeanExpression.Parse`).
 
 Differences from Camel: no `messageHistory`, `messageTimestamp`, `date:file`, `variable(s)`, `jsonpath`/`xpath` or the newer string
 functions; `sys.name` reads `AppContext.GetData`; `exception.stacktrace` is `Exception.ToString()`; `collate`/`skip`/`join` split a string
@@ -515,6 +519,99 @@ Where placeholders are resolved: endpoint URIs (every `GetEndpoint`: `from`, `to
 predicates (so `log` messages and every dynamic string option), route ids, groups and descriptions and node ids/descriptions (when routes are
 added), the `log` EIP's logger name, registry references (`aggregationStrategyRef`, ...), and the `properties:` Simple function. Not
 covered: the `properties:` endpoint component and encrypted values.
+
+### Data formats
+
+`IDataFormat` (`Caravan.Spi`): `MarshalAsync(exchange, graph, output)` writes an object to a stream, `UnmarshalAsync(exchange, input)` reads one.
+Instances are configured once and then shared by all exchanges (thread-safe); an `IService` data format is started with the route using it.
+`IDataFormatContentType` (`ContentType`, `ContentTypeHeader`, default true) makes `marshal` set the `Content-Type` header (json, xml).
+
+- **Resolution.** `context.ResolveDataFormat(name)` / `ICaravanContext.DataFormats` (`DataFormatRegistry`): an instance added with `Add` (shared) →
+  an `IDataFormat` registry bean → a new instance from a factory (`AddFactory`, then the global `RegisterGlobal` ones) → `NoSuchDataFormatException`.
+  Names accept placeholders.
+- **EIPs.** `.Marshal(df)` / `.Marshal("json")`, `.Unmarshal(df, allowNullBody)` / `.Unmarshal("csv")` (`MarshalDefinition`/`UnmarshalDefinition`,
+  names resolved when the route is created). `MarshalProcessor` replaces the body with the written `byte[]` (headers kept);
+  `UnmarshalProcessor` reads the body as a stream (text and bytes are converted; a stream cache is reset), disposes the input unless the
+  data format returned it, and fails a null body with `InvalidPayloadException` unless `allowNullBody`.
+- **Component.** `dataformat:name:marshal|unmarshal?options` resolves the data format and binds the options to its properties (`PropertyBinder`:
+  `unmarshalType=Full.Type.Name`, `delimiter=;`, ...). Producer only.
+- **Built-ins** (`Caravan.DataFormat`, factories on `Caravan.DataFormats`, BCL only): `json`/`jackson` (`JsonDataFormat`, System.Text.Json with
+  `JsonSerializerDefaults.Web`; `UnmarshalType`, `UseList`, `PrettyPrint`, `Include` = `ALWAYS`/`NON_NULL`/`NON_DEFAULT`, `SerializerOptions`,
+  `AllowUnmarshallType` with the `CaravanJacksonUnmarshalType` header; untyped unmarshal gives `Dictionary<string, object?>`/`List<object?>`/
+  `string`/`bool`/`int`/`long`/`double`/null, like Jackson's maps, so Simple OGNL works on it; `typeof(JsonNode)` for a DOM),
+  `xml`/`jaxb` (`XmlDataFormat`, `XmlSerializer` per runtime type without `xsi`/`xsd` declarations; untyped unmarshal gives an `XDocument`;
+  `PrettyPrint` (default true, as JAXB), `Fragment`, `Encoding`; DTDs prohibited), `csv` (`CsvDataFormat`, RFC 4180: `Delimiter`, `Quote`,
+  `Escape`, `RecordSeparator` (CRLF), `Header`, `SkipHeaderRecord`, `UseMaps`, `IgnoreEmptyLines`, `Trim`, `QuoteAll`; unmarshal gives
+  `List<List<string>>` or `List<Dictionary<string, string?>>`), `base64` (`LineLength` 76 with a trailing separator as commons-codec, `UrlSafe`
+  without padding), `gzipDeflater`/`gzip` (`GZipStream`), `zipDeflater` (`ZLibStream`, Java's `Deflater` format), `string` (`Charset`).
+
+Differences from Camel: `marshal` produces a `byte[]` (Camel a stream cache); JSON uses .NET's camelCase convention and System.Text.Json;
+there is no `serialization` data format (binary serialization is unsafe and obsolete in .NET), no `zipFile`, no fluent `marshal().json()`
+clause (use `DataFormats.Json()`).
+
+### Stream caching
+
+`ICaravanContext.StreamCaching` (`Caravan.Streams.StreamCachingStrategy`), Camel's stream caching. Enabled by default for every route (Camel 4);
+`.StreamCaching(bool)` on a route (`RouteDefinition.StreamCaching`) overrides the context's `Enabled`.
+
+- **Where.** `Channel` runs before every node: when the route caches streams and the body is a `Stream`, an `IStreamCache` body is reset,
+  another stream is read into a new cache (and disposed) which replaces the body. So every node reads the whole body, and a stream produced by
+  a node is cached before the next one. Unlike Camel any stream is cached, seekable or not.
+- **Storage.** `CachedOutputStream` buffers in memory; with `SpoolEnabled` (default false, as Camel 4) data beyond `SpoolThreshold` (128 KB) goes
+  to a temporary file in `SpoolDirectory` (default `<temp>/caravan/caravan-tmp-<uuid>`). The result is a `ByteArrayStreamCache` or a
+  `FileStreamCache` (read-only, seekable `Stream`s). A spool file is an `ISynchronization` on the exchange that created it, deleted when its
+  unit of work completes (handed over with the exchange, e.g. to `seda`); the directory is deleted when the context stops
+  (`RemoveSpoolDirectoryWhenStopping`). Counters: `CacheMemoryCounter`/`Size`, `CacheSpoolCounter`/`Size`, `SpoolFilesDeleted`.
+- **Copies.** `Message.CopyFrom` (hence `Exchange.Copy`, correlated copies of split/multicast/wire tap branches, seda copies) gives the copy
+  `IStreamCache.Copy()`: an independent reader over the same data, so parallel branches never share a position. File readers open their handle
+  when created and keep reading after the file was deleted (`FileShare.Delete`); disposing a reader only closes its handle, reopened on demand
+  while the file exists. Disposing a byte array cache does nothing.
+- **Readers.** The type converters read a stream cache from the start and reset it (`Stream` → `byte[]`/`string`), so `${body}` in a log, a
+  `convertBodyTo` or `GetBody<string>()` can run any number of times; `ExchangeFormatter` shows cached bodies.
+
+### Bean binding
+
+The `bean` EIP (`.Bean(object | Type | "name", method?, scope?)`, `BeanDefinition`, `BeanProcessor`), the `bean:name?method=...&scope=...` and
+`class:Full.Type.Name?method=...` components (`bean.property=value` options set on the bean) and the `bean`/`method` language (`Expr.Method(...)`,
+`${bean:...}`, `BeanExpression`) share Camel's bean binding (internals in `Caravan.Components.Bean`):
+
+- **Bean.** An instance; a registry bean by name (placeholders allowed; falls back to the service provider's service for a type of that name);
+  or a type: the context's `IServiceProvider` service, else a constructor whose parameters come from the service provider, the context or
+  defaults (`BeanActivator`); a static class has only its static methods. `BeanScope`: `Singleton` (once per node/endpoint/context; a missing
+  registry bean or unknown method fails route creation), `Request` (once per exchange, kept in an exchange property), `Prototype` (every call).
+  An `IProcessor` bean without method processes the exchange itself.
+- **Method.** `method=name` (exact case, then ignoring case), `name(string, int)` (parameter types choose the overload; `*` matches any type;
+  C#/Java/full type names), or `name(${body}, 'text', 5, true, null)` (one value per parameter: Simple expressions evaluated per call, quoted
+  text, numbers, booleans, null; other words are text). Without a name the candidates are the public methods (not `object`'s, accessors,
+  `Dispose`...), only the `[Handler]` ones if any. One candidate is taken; otherwise by the body: the methods with one body parameter the body is
+  an instance of (most specific wins), else the only one the body converts to, else the only method without body parameter; else
+  `AmbiguousMethodCallException`. No match: `MethodNotFoundException`. Choices depending only on the body's type are cached per type
+  (`BeanInfo` per bean type, a selector per method specification).
+- **Parameters.** `[Body]`, `[Header("n")]`, `[Headers]`, `[ExchangeProperty("n")]`, `[ExchangeProperties]`, `[ExchangeException]` (the exception or
+  caught exception, or the first of the parameter type in its cause chain), `[Simple("...")]`; by type: `Exchange`, `Message`, `ICaravanContext`,
+  `CancellationToken` (the exchange's), `ITypeConverter`/`TypeConverterRegistry`, `IRegistry`; the first other parameter takes the body, later
+  ones get their default value. Values are converted with the type converters; a failure is a `ParameterBindingException`.
+- **Invocation.** A compiled delegate per method; `Task`, `Task<T>`, `ValueTask`, `ValueTask<T>` are awaited; exceptions are not wrapped. The
+  result becomes the body whatever the exchange pattern (null included); `void`/`Task`/`ValueTask` leave the body unchanged. `BeanExpression`
+  returns the result without changing the body (asynchronous methods are waited for synchronously).
+
+Differences from Camel: no OGNL method chains in the bean language, no `CamelBeanMethodName` header, parameters after the body parameter get
+defaults instead of being matched by type; method names fall back to a case-insensitive match; `.Bean(type)` asks the service provider first.
+
+### Misc components
+
+- **controlbus** (`controlbus:route?routeId=x|current&action=start|stop|suspend|resume|restart|status|stats&async=..&restartDelay=..`,
+  `controlbus:language:name`): `status` returns the route (or, without `routeId`, context) status name, `stats` an XML `routeStat` /
+  `camelContextStat` with the route counters (`Route.ExchangesTotal`/`Completed`/`Failed`, inflight); `async` runs the action in the background
+  (required for a route stopping itself). The language command evaluates the body as an expression and sets a non-null result as the body.
+- **stub** (`StubComponent : SedaComponent`): a `seda` queue named after the whole path (`stub:jms:queue:x`), lenient options, own queues.
+- **ref** (`ref:name`): the registry endpoint (an `EndpointBase` as is, another `IEndpoint` wrapped in `RefEndpoint`, a string URI resolved).
+- **dataset** / **dataset-test**: `IDataSet` (`Size`, `ReportCount`, `PopulateMessage`, `AssertMessageExpected`), `DataSetSupport`, `SimpleDataSet`,
+  `ListDataSet`. `DataSetEndpoint` is a `MockEndpoint` expecting `Size` messages: its consumer sends them after `initialDelay` (1 s) and once the
+  data set has `minRate` messages, `produceDelay` (3 ms) apart, with the `CaravanDataSetIndex` header; its producer checks order (`dataSetIndex`
+  lenient/strict/off) and content per message after `consumeDelay` (`MockEndpoint.PerformAssertionsAsync`). `dataset-test:uri` reads the
+  expected bodies from `uri` when it starts (polling until `timeout`, 2 s), optionally `split`, and expects them (`anyOrder`).
+- **browse** (`browse:name?browseLimit=n`): records a copy of each exchange (`Exchanges`), then hands it to its consumer like `direct`.
 
 ### Endpoint URIs
 
@@ -585,7 +682,8 @@ Derive from `ComponentBase` (override `CreateEndpoint(uri, remaining, parameters
 Register built-in components in the `CaravanContext` static constructor. Background consumers follow the rules in
 "Consumers: lifecycle, suspension and shutdown" above.
 
-Built-in components: `direct`, `seda` (and `vm`, its process-wide variant), `timer`, `scheduler`, `log`, `mock`, `saga`.
+Built-in components: `direct`, `seda` (and `vm`, its process-wide variant), `timer`, `scheduler`, `log`, `mock`, `saga`, `dataformat`, `bean`,
+`class`, `controlbus`, `stub`, `ref`, `dataset`, `dataset-test`, `browse`.
 
 ### Consumers: lifecycle, suspension and shutdown
 
@@ -642,6 +740,7 @@ Other conventions:
   `Caravan.Language.Simple` holds the Simple parser),
   `Caravan.Processors`, `Caravan.Support`, `Caravan.Impl`, `Caravan.Aggregation` (built-in aggregation strategies),
   `Caravan.LoadBalancing` (built-in load balancers), `Caravan.Idempotent` (idempotent repositories), `Caravan.Saga` (saga SPI and in-memory service),
+  `Caravan.DataFormat` (built-in data formats and their registry), `Caravan.Streams` (stream caching),
   `Caravan.Components.<Name>`; `Caravan.Testing` (the test kit project).
 - Tests: xUnit (`tests/Caravan.Core.Tests`, `tests/Caravan.Testing.Tests`), one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
   expectation or `TimeProvider` can be used instead; keep the suite fast.

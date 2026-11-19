@@ -65,7 +65,7 @@ internal sealed class RouteProcessor(Route route, IProcessor pipeline) : INaviga
             finally
             {
                 // The unit of work's callbacks are part of the exchange's work: count them as inflight.
-                route.DecrementInflight();
+                route.DecrementInflight(exchange.IsFailed);
                 inflight.Remove(exchange, route.Id);
             }
 

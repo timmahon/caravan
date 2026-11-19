@@ -37,6 +37,13 @@ public sealed class RouteContext
     /// </summary>
     public IList<IInterceptStrategy> InterceptStrategies { get; } = [];
 
+    /// <summary>
+    /// The context's stream caching strategy when the route caches streams (<see cref="RouteDefinition.StreamCaching"/>, else the
+    /// strategy's <see cref="Streams.StreamCachingStrategy.Enabled"/>), otherwise null.
+    /// </summary>
+    public Streams.StreamCachingStrategy? StreamCachingStrategy =>
+        Definition.StreamCaching ?? Context.StreamCaching.Enabled ? Context.StreamCaching : null;
+
     /// <summary>Wraps each node with error handling (set by the error handling feature).</summary>
     public IErrorHandlerFactory? ErrorHandlerFactory { get; set; }
 
