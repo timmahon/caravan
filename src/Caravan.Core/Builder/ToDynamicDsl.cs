@@ -1,3 +1,4 @@
+using Caravan.Language;
 using Caravan.Model;
 using Caravan.Processors;
 using Caravan.Support;
@@ -9,7 +10,7 @@ public static class ToDynamicDsl
 {
     /// <summary>
     /// Sends to a URI computed per exchange from <paramref name="uri"/>, which may contain <c>${header.x}</c>,
-    /// <c>${body}</c>, <c>${exchangeProperty.x}</c> tokens (see <see cref="TokenTemplate"/>), e.g. <c>.ToD("mock:${header.target}")</c>.
+    /// <c>${body}</c>, <c>${exchangeProperty.x}</c> functions of the Simple language (see <see cref="SimpleLanguage"/>), e.g. <c>.ToD("mock:${header.target}")</c>.
     /// </summary>
     /// <param name="steps">The block to add to.</param>
     /// <param name="uri">The URI template.</param>
@@ -17,7 +18,7 @@ public static class ToDynamicDsl
     /// <param name="cacheSize">Maximum cached producers (default 1000; negative disables caching).</param>
     /// <param name="ignoreInvalidEndpoint">Skip, instead of failing, when the URI cannot be resolved.</param>
     public static T ToD<T>(this T steps, string uri, ExchangePattern? pattern = null, int cacheSize = SendDynamicProcessor.DefaultCacheSize, bool ignoreInvalidEndpoint = false)
-        where T : RouteSteps => steps.ToD(TokenTemplate.Parse(uri), pattern, cacheSize, ignoreInvalidEndpoint);
+        where T : RouteSteps => steps.ToD(SimpleLanguage.Expression(uri), pattern, cacheSize, ignoreInvalidEndpoint);
 
     /// <summary>Sends to the URI (or endpoint) returned by <paramref name="uri"/>.</summary>
     /// <param name="steps">The block to add to.</param>

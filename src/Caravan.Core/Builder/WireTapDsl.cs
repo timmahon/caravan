@@ -1,3 +1,4 @@
+using Caravan.Language;
 using Caravan.Model;
 using Caravan.Processors;
 using Caravan.Support;
@@ -9,7 +10,7 @@ public static class WireTapDsl
 {
     /// <summary>
     /// Sends a copy of the exchange to <paramref name="uri"/> asynchronously (<c>InOnly</c>); the original continues
-    /// immediately. The URI may contain <c>${...}</c> tokens (see <see cref="TokenTemplate"/>), evaluated on the tapped exchange.
+    /// immediately. The URI may contain <c>${...}</c> functions of the Simple language (see <see cref="SimpleLanguage"/>), evaluated on the tapped exchange.
     /// </summary>
     /// <param name="steps">The block to add to.</param>
     /// <param name="uri">The URI template.</param>
@@ -18,7 +19,7 @@ public static class WireTapDsl
     /// <param name="cacheSize">Maximum cached producers (default 1000; negative disables caching).</param>
     /// <param name="ignoreInvalidEndpoint">Skip the tap when the URI cannot be resolved.</param>
     public static T WireTap<T>(this T steps, string uri, bool copy = true, Action<Exchange>? onPrepare = null, int cacheSize = SendDynamicProcessor.DefaultCacheSize, bool ignoreInvalidEndpoint = false)
-        where T : RouteSteps => steps.WireTap(TokenTemplate.Parse(uri), copy, onPrepare, cacheSize, ignoreInvalidEndpoint);
+        where T : RouteSteps => steps.WireTap(SimpleLanguage.Expression(uri), copy, onPrepare, cacheSize, ignoreInvalidEndpoint);
 
     /// <summary>Wire taps to the URI computed by <paramref name="uri"/> on the tapped exchange.</summary>
     /// <param name="steps">The block to add to.</param>

@@ -44,8 +44,22 @@ public interface ICaravanContext : IService, IAsyncDisposable
     /// <summary>Notified about lifecycle and exchange events.</summary>
     IList<IEventNotifier> EventNotifiers { get; }
 
-    /// <summary>Sources used to resolve <c>{{key}}</c> property placeholders, tried in order.</summary>
+    /// <summary>Sources used to resolve <c>{{key}}</c> property placeholders, tried in order (<see cref="IPropertiesComponent.Sources"/>).</summary>
     IList<IPropertiesSource> PropertiesSources { get; }
+
+    /// <summary>Resolves <c>{{key}}</c> property placeholders (Camel's <c>PropertiesComponent</c>).</summary>
+    IPropertiesComponent PropertiesComponent { get; }
+
+    /// <summary>The expression languages of the context (see <see cref="ResolveLanguage"/>).</summary>
+    Language.LanguageRegistry Languages { get; }
+
+    /// <summary>
+    /// The language named <paramref name="name"/> (<c>simple</c>, <c>constant</c>, <c>header</c>, <c>exchangeProperty</c>,
+    /// <c>tokenize</c>, <c>ref</c>, or one added to <see cref="Languages"/> or bound in the registry), e.g.
+    /// <c>context.ResolveLanguage("simple").CreatePredicate("${header.x} &gt; 5")</c>.
+    /// </summary>
+    /// <exception cref="NoSuchLanguageException">There is no such language.</exception>
+    ILanguage ResolveLanguage(string name);
 
     // Components
 
@@ -142,7 +156,12 @@ public interface ICaravanContext : IService, IAsyncDisposable
     /// <summary>Creates a template for receiving (polling) messages from endpoints in application code.</summary>
     IConsumerTemplate CreateConsumerTemplate();
 
-    /// <summary>Resolves <c>{{key}}</c> and <c>{{key:default}}</c> placeholders in <paramref name="text"/>.</summary>
+    /// <summary>
+    /// Resolves <c>{{key}}</c>, <c>{{key:default}}</c>, <c>{{env:NAME}}</c> and optional <c>{{?key}}</c> placeholders in
+    /// <paramref name="text"/> (an endpoint URI or any other text) with <see cref="PropertiesComponent"/>
+    /// (<see cref="IPropertiesComponent.ParseUri"/>).
+    /// </summary>
+    /// <exception cref="ArgumentException">A placeholder refers to a missing property without default.</exception>
     string ResolvePropertyPlaceholders(string text);
 
     /// <summary>Generates a unique node id such as <c>to3</c>.</summary>

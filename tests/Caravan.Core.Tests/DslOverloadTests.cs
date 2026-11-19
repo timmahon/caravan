@@ -1,4 +1,5 @@
 using Caravan.Builder;
+using static Caravan.Builder.Lang;
 
 namespace Caravan.Core.Tests;
 
@@ -35,6 +36,43 @@ public class DslOverloadTests : ContextTestBase
             .Build(Context).Single();
 
         Assert.Equal(19, route.Outputs.Count);
+    }
+
+    [Fact]
+    public void Simple_and_lang_helpers_bind_to_a_single_overload()
+    {
+        var route = RouteBuilder.Create(b => b.From("direct:start")
+            .Filter(Simple("${header.x} > 5"), f => f.To("mock:a"))
+            .Choice(c => c
+                .When(Simple("${body} contains 'a'"), r => r.To("mock:b"))
+                .When(Pred.Simple("${header.y} == 1"), r => r.To("mock:c"))
+                .Otherwise(r => r.SetBody(Simple("${body}!"))))
+            .SetBody(Simple("Hello ${body}"))
+            .SetBody(Expr.Simple("${body}"))
+            .Transform(Simple("${body.Length}", typeof(int)))
+            .SetHeader("h", Simple("${header.x}"))
+            .SetHeader("c", Constant(1))
+            .SetHeader("h2", Header("x"))
+            .SetProperty("p", Simple("${exchangeId}"))
+            .SetProperty("p2", ExchangeProperty("p"))
+            .Validate(Simple("${body} != null"))
+            .LoopWhile(Simple("${header.n} < 3"), l => l.SetHeader("n", Simple("${header.n}++")))
+            .Split(Tokenize(","), s => s.To("mock:part"))
+            .Split(Simple("${body}"), s => s.To("mock:part"))
+            .RecipientList(Simple("mock:${header.r}"))
+            .RecipientList("mock:${header.r}")
+            .RoutingSlip(Simple("${header.slip}"))
+            .RoutingSlip("${header.slip}")
+            .ToD(Simple("mock:${header.d}"))
+            .ToD("mock:${header.d}")
+            .WireTap("mock:${header.t}")
+            .Enrich("direct:${header.e}")
+            .Log("${body}")
+            .Delay(Simple("${header.delay}"))
+            .Script(Body()))
+            .Build(Context).Single();
+
+        Assert.Equal(25, route.Outputs.Count);
     }
 
     [Fact]

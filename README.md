@@ -4,21 +4,31 @@ A reimagining of [Apache Camel](https://camel.apache.org) for .NET: an integrati
 the Enterprise Integration Patterns, with routes defined in a fluent C# DSL.
 
 ```csharp
+using static Caravan.Builder.Lang;
+
 await using var context = new CaravanContext();
+context.PropertiesComponent.AddConfiguration(configuration);      // {{placeholders}} from appsettings.json, env, ...
 
 context.AddRoutes(RouteBuilder.Create(b =>
     b.From("direct:orders")
      .RouteId("orders")
-     .SetHeader("received", Expr.Constant(true))
-     .Transform((string s) => s.ToUpperInvariant())
-     .To("log:orders?showHeaders=true")
+     .SetHeader("received", Constant(true))
+     .Filter(Simple("${body.Total} > {{orders.threshold:100}}"), big => big
+         .SetHeader("customer", Simple("${body.Customer?.Name ?: 'unknown'}"))
+         .Log("Big order ${body.Id} from ${header.customer} at ${date:now:HH:mm:ss}")
+         .ToD("seda:{{orders.queue}}-${header.customer}"))
+     .Transform((Order o) => o with { Checked = true })     // or plain C# lambdas, typed
      .To("mock:result")));
 
 await context.StartAsync();
 
 var template = context.CreateProducerTemplate();
-await template.SendBodyAsync("direct:orders", "hello");
+await template.SendBodyAsync("direct:orders", new Order("o1", 250m));
 ```
+
+Expressions can be C# lambdas or Camel's [Simple language](docs/ARCHITECTURE.md#languages-and-the-simple-language)
+(`${header.x}`, operators, OGNL, `${date:...}`, ternary/elvis), compiled once and cached; property placeholders (`{{key}}`) resolve from
+`IConfiguration`, dictionaries or environment variables.
 
 ## Testing your routes
 

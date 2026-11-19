@@ -1,3 +1,4 @@
+using Caravan.Support;
 using Caravan.Processors;
 using Caravan.Spi;
 
@@ -50,12 +51,7 @@ public abstract class FanOutDefinition : ProcessorDefinition
         var strategy = AggregationStrategy;
         if (strategy is null && AggregationStrategyRef is { } name)
         {
-            strategy = routeContext.Context.Registry.Lookup(name) switch
-            {
-                null => throw new NoSuchBeanException(name),
-                IAggregationStrategy found => found,
-                var other => throw new InvalidOperationException($"Bean '{name}' is a {other.GetType().Name}, not an {nameof(IAggregationStrategy)}"),
-            };
+            strategy = RegistryLookup.Lookup<IAggregationStrategy>(routeContext.Context, name);
         }
 
         if (MaxDegreeOfParallelism < 0)

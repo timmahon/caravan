@@ -160,6 +160,22 @@ public static class Expr
     public static IExpression Lines(IExpression source, int group = 0, bool skipFirst = false) =>
         Tokenize(source, "\\r\\n|\\n|\\r", regex: true, group, skipFirst);
 
+    /// <summary>
+    /// A Simple language expression (Camel's <c>simple("...")</c>): text with <c>${...}</c> functions such as
+    /// <c>Expr.Simple("Hello ${header.name}, you ordered ${body.Lines[0].Sku}")</c>. A text made of one function evaluates to the
+    /// function's value (not a string). Compiled once and cached; see <see cref="Language.SimpleLanguage"/>.
+    /// </summary>
+    /// <exception cref="Language.Simple.SimpleParseException">The text is invalid.</exception>
+    public static IExpression Simple(string text) => Language.SimpleLanguage.Expression(text);
+
+    /// <summary>A Simple expression whose value is converted to <paramref name="resultType"/> (Camel's <c>simple(text, type)</c>).</summary>
+    /// <exception cref="Language.Simple.SimpleParseException">The text is invalid.</exception>
+    public static IExpression Simple(string text, Type resultType) => Language.SimpleLanguage.Expression(text, resultType);
+
+    /// <summary>A Simple expression whose value is converted to <typeparamref name="T"/>.</summary>
+    /// <exception cref="Language.Simple.SimpleParseException">The text is invalid.</exception>
+    public static IExpression Simple<T>(string text) => Language.SimpleLanguage.Expression(text, typeof(T));
+
     /// <summary>Returns <paramref name="value"/> itself when it is an <see cref="IExpression"/>, otherwise a constant expression for it.</summary>
     public static IExpression Of(object? value) => value as IExpression ?? Constant(value);
 }

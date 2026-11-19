@@ -1,3 +1,4 @@
+using Caravan.Support;
 using Caravan.Aggregation;
 using Caravan.Processors;
 using Caravan.Spi;
@@ -143,18 +144,5 @@ public sealed class AggregateDefinition(IExpression correlationExpression) : Out
     }
 
     private static T? Lookup<T>(RouteContext routeContext, string? name)
-        where T : class
-    {
-        if (name is null)
-        {
-            return null;
-        }
-
-        return routeContext.Context.Registry.Lookup(name) switch
-        {
-            null => throw new NoSuchBeanException(name),
-            T found => found,
-            var other => throw new InvalidOperationException($"Bean '{name}' is a {other.GetType().Name}, not an {typeof(T).Name}"),
-        };
-    }
+        where T : class => RegistryLookup.Lookup<T>(routeContext.Context, name);
 }

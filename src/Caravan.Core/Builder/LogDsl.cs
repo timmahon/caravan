@@ -1,3 +1,4 @@
+using Caravan.Language;
 using Caravan.Model;
 using Caravan.Support;
 using Microsoft.Extensions.Logging;
@@ -9,7 +10,7 @@ public static class LogDsl
 {
     /// <summary>
     /// Logs <paramref name="message"/> at <c>Information</c> with the route id as logger name. The message may contain
-    /// <c>${...}</c> tokens (see <see cref="TokenTemplate"/>), e.g. <c>.Log("Got ${body}")</c>.
+    /// <c>${...}</c> functions of the Simple language (see <see cref="SimpleLanguage"/>), e.g. <c>.Log("Got ${body}")</c>.
     /// </summary>
     public static T Log<T>(this T steps, string message)
         where T : RouteSteps => steps.Log(LogLevel.Information, message);
