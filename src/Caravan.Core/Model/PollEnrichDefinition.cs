@@ -32,6 +32,12 @@ public sealed class PollEnrichDefinition(IExpression uri) : ProcessorDefinition
     /// <summary>Maximum cached polling consumers (default 1000; negative disables caching).</summary>
     public int CacheSize { get; set; } = ConsumerCache.DefaultCacheSize;
 
+    /// <summary>
+    /// The variable receiving the polled message (Camel's <c>variableReceive</c>: body as the variable, headers as <c>name.header.key</c>); the
+    /// message is then left unchanged.
+    /// </summary>
+    public string? VariableReceive { get; set; }
+
     /// <inheritdoc />
     public override string ShortName => "pollEnrich";
 
@@ -46,5 +52,8 @@ public sealed class PollEnrichDefinition(IExpression uri) : ProcessorDefinition
             AggregationStrategy ?? RegistryLookup.Lookup<IAggregationStrategy>(routeContext.Context, AggregationStrategyRef),
             AggregateOnException,
             IgnoreInvalidEndpoint,
-            CacheSize);
+            CacheSize)
+        {
+            VariableReceive = VariableReceive,
+        };
 }

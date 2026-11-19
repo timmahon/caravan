@@ -50,6 +50,33 @@ public abstract class RouteBuilder : IRoutesBuilder
         return new RouteDefinitionBuilder(route);
     }
 
+    /// <summary>
+    /// Starts a new route whose consumed message goes into the variable <paramref name="variableReceive"/> (Camel's <c>fromV</c>): body as the
+    /// variable, headers as <c>name.header.key</c>; the route starts with an empty message.
+    /// </summary>
+    /// <param name="uri">The endpoint URI.</param>
+    /// <param name="variableReceive">The variable.</param>
+    /// <returns>The route builder.</returns>
+    public RouteDefinitionBuilder FromV(string uri, string variableReceive)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(variableReceive);
+        var builder = From(uri);
+        builder.Definition.FromVariableReceive = variableReceive;
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds a data type transformer to the context (Camel's <c>transformer()</c>), e.g.
+    /// <c>Transformer(new DataFormatTransformer(DataType.Parse("json"), DataType.Of&lt;Order&gt;(), "json"))</c>. Only available inside
+    /// <see cref="Configure"/>.
+    /// </summary>
+    /// <param name="transformer">The transformer.</param>
+    public void Transformer(DataTypes.ITransformer transformer) => Context.Transformers.Add(transformer);
+
+    /// <summary>Adds a data type validator to the context (Camel's <c>validator()</c>). Only available inside <see cref="Configure"/>.</summary>
+    /// <param name="validator">The validator.</param>
+    public void Validator(DataTypes.IValidator validator) => Context.Validators.Add(validator);
+
     /// <summary>The REST definitions defined by the last <see cref="Build"/> (their routes are among the built routes).</summary>
     public IReadOnlyList<RestDefinition> RestDefinitions => _rests;
 

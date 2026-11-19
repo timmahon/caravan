@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <RootNamespace>Caravan.Samples.WebApi</RootNamespace>
+    <Description>Caravan sample: ASP.NET Core minimal API with the REST DSL (C# and YAML routes), health checks and OpenTelemetry.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="OpenTelemetry.Extensions.Hosting" />
+    <PackageReference Include="OpenTelemetry.Exporter.Console" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Caravan.AspNetCore\Caravan.AspNetCore.csproj" />
+    <ProjectReference Include="..\..\src\Caravan.OpenTelemetry\Caravan.OpenTelemetry.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Update="routes\*.yaml" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

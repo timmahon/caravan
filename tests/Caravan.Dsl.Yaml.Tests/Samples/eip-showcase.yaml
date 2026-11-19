@@ -34,6 +34,10 @@
         - setHeader: { name: h, constant: v }
         - setHeaders: { headers: [ { name: a, constant: "1" } ] }
         - setProperty: { name: p, constant: v }
+        - setVariable: { name: v1, constant: "1" }
+        - setVariables: { variables: [ { name: v2, constant: "2" } ] }
+        - convertVariableTo: { name: v1, type: int }
+        - removeVariable: v2
         - removeHeader: h
         - removeHeaders: { pattern: "x*" }
         - removeProperty: p
@@ -56,6 +60,7 @@
         - wireTap: log:tap
         - enrich: { constant: "direct:resource" }
         - pollEnrich: { constant: "seda:poll", timeout: 0 }
+        - poll: { uri: "seda:poll", timeout: 0 }
         - claimCheck: { operation: Set, key: k }
         - claimCheck: { operation: GetAndRemove, key: k }
         - pipeline: { steps: [ { log: pipeline } ] }
@@ -86,6 +91,7 @@
         - saga: { steps: [ { log: saga } ] }
         - kamelet: "suffix?value=!"
         - sort: { tokenize: "," }
+        - threads: { poolSize: 1 }
         - rollback: { markRollbackOnlyLast: true }
         - stop: {}
 - routeTemplate:

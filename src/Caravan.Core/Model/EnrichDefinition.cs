@@ -32,6 +32,15 @@ public sealed class EnrichDefinition(IExpression uri) : ProcessorDefinition
     /// <summary>Maximum cached producers (default 1000; negative disables caching).</summary>
     public int CacheSize { get; set; } = ProducerCache.DefaultCacheSize;
 
+    /// <summary>The variable whose value is sent as the body (Camel's <c>variableSend</c>); null sends the message body.</summary>
+    public string? VariableSend { get; set; }
+
+    /// <summary>
+    /// The variable receiving the reply (Camel's <c>variableReceive</c>: body as the variable, headers as <c>name.header.key</c>); the message
+    /// is then left unchanged.
+    /// </summary>
+    public string? VariableReceive { get; set; }
+
     /// <inheritdoc />
     public override string ShortName => "enrich";
 
@@ -46,5 +55,9 @@ public sealed class EnrichDefinition(IExpression uri) : ProcessorDefinition
             AggregateOnException,
             ShareUnitOfWork,
             IgnoreInvalidEndpoint,
-            CacheSize);
+            CacheSize)
+        {
+            VariableSend = VariableSend,
+            VariableReceive = VariableReceive,
+        };
 }

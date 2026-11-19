@@ -94,6 +94,36 @@ public sealed class RouteDefinition
     /// </summary>
     public Impl.LocalBeanRegistry? LocalBeans { get; set; }
 
+    /// <summary>The route's policies (Camel's <c>routePolicy</c>), called on its lifecycle and on every exchange (see <see cref="Spi.IRoutePolicy"/>).</summary>
+    public List<Spi.IRoutePolicy> RoutePolicies { get; } = [];
+
+    /// <summary>Comma-separated names of <see cref="Spi.IRoutePolicy"/> beans added to <see cref="RoutePolicies"/> when the route is created (Camel's <c>routePolicyRef</c>).</summary>
+    public string? RoutePolicyRefs { get; set; }
+
+    /// <summary>
+    /// A Simple predicate deciding whether the route is added at all (Camel 4's route <c>precondition</c>), evaluated once when the route is
+    /// added to the context, typically on properties: <c>{{feature.enabled}}</c> or <c>${properties:env} == 'prod'</c>. Null always adds it.
+    /// </summary>
+    public string? Precondition { get; set; }
+
+    /// <summary>A prefix added to the ids of all the route's nodes, generated or explicit (Camel's <c>nodePrefixId</c>); not to the route id.</summary>
+    public string? NodePrefixId { get; set; }
+
+    /// <summary>
+    /// The data type the route expects as input (Camel's <c>inputType</c>): an exchange entering with another data type is transformed with the
+    /// context's transformers (see <see cref="DataTypes.TransformerRegistry"/>), and validated when <see cref="DataTypes.DataTypeContract.Validate"/>.
+    /// </summary>
+    public DataTypes.DataTypeContract? InputType { get; set; }
+
+    /// <summary>The data type the route produces (Camel's <c>outputType</c>): applied, and optionally validated, when the exchange leaves the route.</summary>
+    public DataTypes.DataTypeContract? OutputType { get; set; }
+
+    /// <summary>
+    /// The variable receiving the consumed message (Camel's <c>from</c> with <c>variableReceive</c>): its body is stored in the variable and its
+    /// headers as <c>name.header.key</c>, and the route starts with an empty message.
+    /// </summary>
+    public string? FromVariableReceive { get; set; }
+
     /// <summary>Whether the route was created by the <c>kamelet</c> component (such routes are never filtered out).</summary>
     internal bool IsKamelet { get; set; }
 

@@ -16,6 +16,7 @@ public sealed class LanguageRegistry
         ["constant"] = new ConstantLanguage(),
         ["header"] = new HeaderLanguage(),
         ["exchangeProperty"] = new ExchangePropertyLanguage(),
+        ["variable"] = new VariableLanguage(),
         ["tokenize"] = new TokenizeLanguage(),
         ["ref"] = new RefLanguage(),
         ["bean"] = new BeanLanguage(),

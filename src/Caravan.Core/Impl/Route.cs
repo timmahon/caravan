@@ -1,6 +1,7 @@
 using Caravan.Model;
 using Caravan.Spi;
 using Caravan.Support;
+using Microsoft.Extensions.Logging;
 
 namespace Caravan.Impl;
 
@@ -58,6 +59,25 @@ public sealed class Route : ServiceSupport, IRoute
 
     /// <summary>The usage of the route's endpoint (management).</summary>
     internal Management.EndpointUsage? EndpointUsage { get; init; }
+
+    /// <summary>The route's policies (its own, by reference and from the context's factories).</summary>
+    public IReadOnlyList<IRoutePolicy> RoutePolicies { get; init; } = [];
+
+    /// <summary>Calls every route policy, logging and ignoring failures (as Camel).</summary>
+    internal void NotifyPolicies(Action<IRoutePolicy, Route> callback)
+    {
+        foreach (var policy in RoutePolicies)
+        {
+            try
+            {
+                callback(policy, this);
+            }
+            catch (Exception e)
+            {
+                RouteContext.Context.LoggerFactory.CreateLogger<Route>().LogWarning(e, "Route policy {Policy} failed on route {RouteId}", policy, Id);
+            }
+        }
+    }
 
     internal void IncrementInflight(DateTimeOffset now)
     {

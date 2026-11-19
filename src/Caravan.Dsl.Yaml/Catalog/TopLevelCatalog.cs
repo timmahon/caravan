@@ -14,7 +14,18 @@ internal static class TopLevelCatalog
             Opt.Str("id", "The id of the route's input."),
             Opt.Ignored("description", OptionKind.String, "describe the route instead"),
             Opt.StepsOption,
-            Opt.Unsupported("variableReceive", "variables are not supported"),
+            Opt.Str("variableReceive", "A variable receiving the consumed message (body; headers as name.header.key); the route starts with an empty message."),
+        ],
+    };
+
+    /// <summary>An <c>inputType</c>/<c>outputType</c> of a route.</summary>
+    public static readonly ObjectSpec DataTypeContract = new()
+    {
+        InlineOption = "urn",
+        Options =
+        [
+            Opt.Str("urn", "The data type: scheme:name (json:Order, clr:MyApp.Order).", required: true),
+            Opt.Bool("validate", "Whether the message is validated with the context's validator for the type."),
         ],
     };
 
@@ -39,11 +50,11 @@ internal static class TopLevelCatalog
                 "Route properties.",
                 new ObjectSpec { Options = [Opt.Str("key", "The key.", required: true), Opt.Str("value", "The value.")] }),
             Opt.Object("from", "The route's endpoint and steps.", From, required: true),
-            Opt.Unsupported("nodePrefixId", "node id prefixes are not supported"),
-            Opt.Unsupported("precondition", "route preconditions are not supported; use route filters"),
-            Opt.Unsupported("routePolicy", "route policies are not supported"),
-            Opt.Unsupported("inputType", "data type contracts are not supported"),
-            Opt.Unsupported("outputType", "data type contracts are not supported"),
+            Opt.Str("nodePrefixId", "A prefix added to the ids of the route's nodes."),
+            Opt.Str("precondition", "A Simple predicate (usually on properties): the route is added only when it is true."),
+            Opt.Str("routePolicy", "Route policies: comma-separated names of IRoutePolicy beans.").Alias("routePolicyRef"),
+            Opt.Object("inputType", "The data type the route expects (transformed and optionally validated on entry).", DataTypeContract),
+            Opt.Object("outputType", "The data type the route produces (transformed and optionally validated on exit).", DataTypeContract),
             Opt.Unsupported("logMask", "log masking is not supported"),
             Opt.Unsupported("messageHistory", "message history is a context option"),
             Opt.Unsupported("trace", "tracing is a context option"),
@@ -106,7 +117,7 @@ internal static class TopLevelCatalog
                 Options = [Opt.Str("name", "The parameter name.", required: true), Opt.Str("value", "The value.")],
             }),
             Opt.Objects("beans", "Beans local to the created route.", Bean),
-            Opt.Unsupported("prefixId", "node id prefixes are not supported"),
+            Opt.Str("prefixId", "A prefix added to the ids of the created route's nodes."),
         ],
     };
 
@@ -123,7 +134,7 @@ internal static class TopLevelCatalog
             Opt.Objects("intercept", "Interceptors of every node.", ModelCatalog.Intercept) with { ItemWrapper = "intercept" },
             Opt.Objects("interceptFrom", "Interceptors of route inputs.", ModelCatalog.InterceptFrom) with { ItemWrapper = "interceptFrom" },
             Opt.Objects("interceptSendToEndpoint", "Interceptors of sends.", ModelCatalog.InterceptSendToEndpoint) with { ItemWrapper = "interceptSendToEndpoint" },
-            Opt.Unsupported("precondition", "route configuration preconditions are not supported"),
+            Opt.Str("precondition", "A Simple predicate (usually on properties): the configuration is added only when it is true."),
         ],
     };
 
@@ -146,6 +157,8 @@ internal static class TopLevelCatalog
             Opt.Object("interceptSendToEndpoint", "Intercepts sends to matching endpoints.", ModelCatalog.InterceptSendToEndpoint),
             Opt.Object("rest", "A REST API: services (get, post, ...) each becoming a route.", RestCatalog.Rest),
             Opt.Object("restConfiguration", "The context's REST configuration.", RestCatalog.Configuration),
+            Opt.Objects("transformers", "Caravan: data type transformers added to the context.", DataTypeCatalog.Transformer),
+            Opt.Objects("validators", "Caravan: data type validators added to the context.", DataTypeCatalog.Validator),
             Opt.Unsupported("camelContext", "configure the context in code or through Caravan.Hosting options"),
             Opt.Unsupported("dataFormats", "declare data formats in code (context.DataFormats) or inline in marshal/unmarshal"),
         ],

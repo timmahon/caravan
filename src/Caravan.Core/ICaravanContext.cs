@@ -77,6 +77,34 @@ public interface ICaravanContext : IService, IAsyncDisposable
     /// <summary>Resolves <c>{{key}}</c> property placeholders (Camel's <c>PropertiesComponent</c>).</summary>
     IPropertiesComponent PropertiesComponent { get; }
 
+    /// <summary>
+    /// The variable repositories (Camel 4 variables): <c>global</c>, <c>route</c> and custom ones; exchange variables live on
+    /// <see cref="Exchange.Variables"/>.
+    /// </summary>
+    VariableRepositoryRegistry VariableRepositories { get; }
+
+    /// <summary>
+    /// The route policy factories: each creates (or not) a policy for every route created afterwards, in addition to the route's own
+    /// (Camel's <c>RoutePolicyFactory</c>).
+    /// </summary>
+    IList<IRoutePolicyFactory> RoutePolicyFactories { get; }
+
+    /// <summary>The data type transformers of the context (data type contracts, <c>transform</c> with <c>toType</c>).</summary>
+    DataTypes.TransformerRegistry Transformers { get; }
+
+    /// <summary>The data type validators of the context (data type contracts with validation).</summary>
+    DataTypes.ValidatorRegistry Validators { get; }
+
+    /// <summary>Gets a global variable (<c>global:name</c>, or a name prefixed by another repository id), or null.</summary>
+    /// <param name="name">The variable name.</param>
+    /// <returns>The value.</returns>
+    object? GetVariable(string name);
+
+    /// <summary>Sets a global variable (<c>global:name</c>, or a name prefixed by another repository id); null removes it.</summary>
+    /// <param name="name">The variable name.</param>
+    /// <param name="value">The value.</param>
+    void SetVariable(string name, object? value);
+
     /// <summary>The expression languages of the context (see <see cref="ResolveLanguage"/>).</summary>
     Language.LanguageRegistry Languages { get; }
 

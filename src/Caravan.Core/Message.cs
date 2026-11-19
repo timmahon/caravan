@@ -20,6 +20,24 @@ public sealed class Message
     /// <summary>The unique id of the message.</summary>
     public string MessageId { get; set; }
 
+    /// <summary>
+    /// The time the message was created by its source, in Unix milliseconds (Camel's <c>getMessageTimestamp()</c>): the
+    /// <see cref="CaravanHeaders.MessageTimestamp"/> header (a number or a date), or 0 when the consumer did not set it.
+    /// </summary>
+    public long MessageTimestamp => GetHeader(CaravanHeaders.MessageTimestamp) switch
+    {
+        null => 0,
+        DateTimeOffset d => d.ToUnixTimeMilliseconds(),
+        DateTime d => new DateTimeOffset(d.Kind == DateTimeKind.Unspecified ? DateTime.SpecifyKind(d, DateTimeKind.Utc) : d.ToUniversalTime()).ToUnixTimeMilliseconds(),
+        var value => Exchange.Context.TypeConverter.TryConvert(typeof(long), Exchange, value, out var millis) && millis is long l ? l : 0,
+    };
+
+    /// <summary>
+    /// The data type of the message, when known (Camel's <c>DataTypeAware</c>): set by route contracts (<c>inputType</c>/<c>outputType</c>) and
+    /// <c>transform</c> with <c>toType</c>, or by producers and consumers; copied with the message.
+    /// </summary>
+    public DataTypes.DataType? DataType { get; set; }
+
     /// <summary>The headers; names are case-insensitive.</summary>
     public IDictionary<string, object?> Headers { get; private set; } =
         new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
@@ -111,6 +129,7 @@ public sealed class Message
     public void CopyFrom(Message other)
     {
         MessageId = other.MessageId;
+        DataType = other.DataType;
         _body = other._body is Spi.IStreamCache cache ? cache.Copy() : other._body;
         Headers = new Dictionary<string, object?>(other.Headers, StringComparer.OrdinalIgnoreCase);
     }

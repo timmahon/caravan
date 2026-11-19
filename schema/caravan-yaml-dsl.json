@@ -64,6 +64,940 @@
       "restConfiguration": {
         "$ref": "#/definitions/restConfiguration",
         "description": "The context's REST configuration."
+      },
+      "transformers": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "dataFormatTransformer": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "fromType": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The source data type (scheme:name, or a scheme); absent for any."
+                        },
+                        "toType": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The target data type (scheme:name, or a scheme)."
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "A name for the transformer."
+                        },
+                        "scheme": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The scheme of the serialized form (default: the data format name)."
+                        },
+                        "json": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "allowUnmarshallType": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The AllowUnmarshallType property of JsonDataFormat."
+                                },
+                                "contentTypeHeader": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The ContentTypeHeader property of JsonDataFormat."
+                                },
+                                "include": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The Include property of JsonDataFormat."
+                                },
+                                "prettyPrint": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The PrettyPrint property of JsonDataFormat."
+                                },
+                                "unmarshalType": {
+                                  "type": "string",
+                                  "description": "The UnmarshalType property of JsonDataFormat."
+                                },
+                                "unmarshalTypeName": {
+                                  "type": "string",
+                                  "description": "Alias of unmarshalType."
+                                },
+                                "useList": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The UseList property of JsonDataFormat."
+                                },
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (data formats have no id)."
+                                },
+                                "library": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (System.Text.Json is used)."
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ],
+                          "description": "JSON with System.Text.Json."
+                        },
+                        "jackson": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "allowUnmarshallType": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The AllowUnmarshallType property of JsonDataFormat."
+                                },
+                                "contentTypeHeader": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The ContentTypeHeader property of JsonDataFormat."
+                                },
+                                "include": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The Include property of JsonDataFormat."
+                                },
+                                "prettyPrint": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The PrettyPrint property of JsonDataFormat."
+                                },
+                                "unmarshalType": {
+                                  "type": "string",
+                                  "description": "The UnmarshalType property of JsonDataFormat."
+                                },
+                                "unmarshalTypeName": {
+                                  "type": "string",
+                                  "description": "Alias of unmarshalType."
+                                },
+                                "useList": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The UseList property of JsonDataFormat."
+                                },
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (data formats have no id)."
+                                },
+                                "library": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (System.Text.Json is used)."
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ],
+                          "description": "JSON (Camel's Jackson name)."
+                        },
+                        "xml": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "contentTypeHeader": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The ContentTypeHeader property of XmlDataFormat."
+                                },
+                                "encoding": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The Encoding property of XmlDataFormat."
+                                },
+                                "fragment": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The Fragment property of XmlDataFormat."
+                                },
+                                "prettyPrint": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The PrettyPrint property of XmlDataFormat."
+                                },
+                                "unmarshalType": {
+                                  "type": "string",
+                                  "description": "The UnmarshalType property of XmlDataFormat."
+                                },
+                                "unmarshalTypeName": {
+                                  "type": "string",
+                                  "description": "Alias of unmarshalType."
+                                },
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (data formats have no id)."
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ],
+                          "description": "XML with XmlSerializer."
+                        },
+                        "jaxb": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "contentTypeHeader": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The ContentTypeHeader property of XmlDataFormat."
+                                },
+                                "encoding": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The Encoding property of XmlDataFormat."
+                                },
+                                "fragment": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The Fragment property of XmlDataFormat."
+                                },
+                                "prettyPrint": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The PrettyPrint property of XmlDataFormat."
+                                },
+                                "unmarshalType": {
+                                  "type": "string",
+                                  "description": "The UnmarshalType property of XmlDataFormat."
+                                },
+                                "unmarshalTypeName": {
+                                  "type": "string",
+                                  "description": "Alias of unmarshalType."
+                                },
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (data formats have no id)."
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ],
+                          "description": "XML (Camel's JAXB name)."
+                        },
+                        "csv": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "charset": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The Charset property of CsvDataFormat."
+                                },
+                                "delimiter": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The Delimiter property of CsvDataFormat."
+                                },
+                                "escape": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The Escape property of CsvDataFormat."
+                                },
+                                "header": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The Header property of CsvDataFormat."
+                                },
+                                "ignoreEmptyLines": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The IgnoreEmptyLines property of CsvDataFormat."
+                                },
+                                "quote": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The Quote property of CsvDataFormat."
+                                },
+                                "quoteAll": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The QuoteAll property of CsvDataFormat."
+                                },
+                                "recordSeparator": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The RecordSeparator property of CsvDataFormat."
+                                },
+                                "skipHeaderRecord": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The SkipHeaderRecord property of CsvDataFormat."
+                                },
+                                "trim": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The Trim property of CsvDataFormat."
+                                },
+                                "useMaps": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The UseMaps property of CsvDataFormat."
+                                },
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (data formats have no id)."
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ],
+                          "description": "CSV (RFC 4180)."
+                        },
+                        "base64": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "lineLength": {
+                                  "type": [
+                                    "integer",
+                                    "string"
+                                  ],
+                                  "description": "The LineLength property of Base64DataFormat."
+                                },
+                                "lineSeparator": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The LineSeparator property of Base64DataFormat."
+                                },
+                                "urlSafe": {
+                                  "type": [
+                                    "boolean",
+                                    "string"
+                                  ],
+                                  "description": "The UrlSafe property of Base64DataFormat."
+                                },
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (data formats have no id)."
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ],
+                          "description": "Base64."
+                        },
+                        "gzipDeflater": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "compressionLevel": {
+                                  "type": [
+                                    "integer",
+                                    "string"
+                                  ],
+                                  "description": "The CompressionLevel property of GzipDeflaterDataFormat."
+                                },
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (data formats have no id)."
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ],
+                          "description": "GZip compression."
+                        },
+                        "gzip": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "compressionLevel": {
+                                  "type": [
+                                    "integer",
+                                    "string"
+                                  ],
+                                  "description": "The CompressionLevel property of GzipDeflaterDataFormat."
+                                },
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (data formats have no id)."
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ],
+                          "description": "GZip compression."
+                        },
+                        "zipDeflater": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "compressionLevel": {
+                                  "type": [
+                                    "integer",
+                                    "string"
+                                  ],
+                                  "description": "The CompressionLevel property of ZipDeflaterDataFormat."
+                                },
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (data formats have no id)."
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ],
+                          "description": "Zlib (Java Deflater) compression."
+                        },
+                        "string": {
+                          "anyOf": [
+                            {
+                              "type": "null"
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "charset": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The Charset property of StringDataFormat."
+                                },
+                                "id": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "Accepted for compatibility with Camel; no effect in Caravan (data formats have no id)."
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ],
+                          "description": "Text in a charset."
+                        },
+                        "custom": {
+                          "anyOf": [
+                            {
+                              "type": [
+                                "string",
+                                "number",
+                                "boolean"
+                              ]
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "ref": {
+                                  "type": [
+                                    "string",
+                                    "number",
+                                    "boolean"
+                                  ],
+                                  "description": "The data format (the name of a registry bean)"
+                                }
+                              },
+                              "additionalProperties": false,
+                              "required": [
+                                "ref"
+                              ]
+                            }
+                          ],
+                          "description": "A data format bound in the registry or registered in the context."
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ],
+                  "description": "Marshals to (or unmarshals from) the scheme with a data format: one key naming it, with its options."
+                },
+                "endpointTransformer": {
+                  "type": "object",
+                  "properties": {
+                    "fromType": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ],
+                      "description": "The source data type (scheme:name, or a scheme); absent for any."
+                    },
+                    "toType": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ],
+                      "description": "The target data type (scheme:name, or a scheme)."
+                    },
+                    "name": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ],
+                      "description": "A name for the transformer."
+                    },
+                    "uri": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ],
+                      "description": "The endpoint URI."
+                    },
+                    "ref": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ],
+                      "description": "Alias of uri."
+                    }
+                  },
+                  "additionalProperties": false,
+                  "allOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "uri"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "ref"
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "description": "Transforms by calling an endpoint (InOut) and taking its reply."
+                },
+                "customTransformer": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "fromType": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The source data type (scheme:name, or a scheme); absent for any."
+                        },
+                        "toType": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The target data type (scheme:name, or a scheme)."
+                        },
+                        "name": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "A name for the transformer."
+                        },
+                        "ref": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The transformer (the name of a registry bean)"
+                        },
+                        "className": {
+                          "type": "string",
+                          "description": "The transformer type (created with its default constructor)."
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ],
+                  "description": "An ITransformer bean (ref) or type (className)."
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "description": "Caravan: data type transformers added to the context."
+      },
+      "validators": {
+        "type": "array",
+        "items": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "object",
+              "properties": {
+                "predicateValidator": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ],
+                      "description": "The data type validated."
+                    },
+                    "constant": {
+                      "$ref": "#/definitions/language.constant"
+                    },
+                    "exchangeProperty": {
+                      "$ref": "#/definitions/language.exchangeProperty"
+                    },
+                    "header": {
+                      "$ref": "#/definitions/language.header"
+                    },
+                    "language": {
+                      "$ref": "#/definitions/language.language"
+                    },
+                    "method": {
+                      "$ref": "#/definitions/language.method"
+                    },
+                    "ref": {
+                      "$ref": "#/definitions/language.ref"
+                    },
+                    "simple": {
+                      "$ref": "#/definitions/language.simple"
+                    },
+                    "tokenize": {
+                      "$ref": "#/definitions/language.tokenize"
+                    },
+                    "expression": {
+                      "$ref": "#/definitions/expression"
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "type"
+                  ],
+                  "allOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "constant"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "exchangeProperty"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "header"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "language"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "method"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "ref"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "simple"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "tokenize"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "expression"
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "description": "Validates with a predicate."
+                },
+                "endpointValidator": {
+                  "type": "object",
+                  "properties": {
+                    "type": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ],
+                      "description": "The data type validated."
+                    },
+                    "uri": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ],
+                      "description": "The endpoint URI."
+                    },
+                    "ref": {
+                      "type": [
+                        "string",
+                        "number",
+                        "boolean"
+                      ],
+                      "description": "Alias of uri."
+                    }
+                  },
+                  "additionalProperties": false,
+                  "required": [
+                    "type"
+                  ],
+                  "allOf": [
+                    {
+                      "anyOf": [
+                        {
+                          "required": [
+                            "uri"
+                          ]
+                        },
+                        {
+                          "required": [
+                            "ref"
+                          ]
+                        }
+                      ]
+                    }
+                  ],
+                  "description": "Validates by calling an endpoint; invalid when the call fails."
+                },
+                "customValidator": {
+                  "anyOf": [
+                    {
+                      "type": "null"
+                    },
+                    {
+                      "type": "object",
+                      "properties": {
+                        "type": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The data type validated."
+                        },
+                        "ref": {
+                          "type": [
+                            "string",
+                            "number",
+                            "boolean"
+                          ],
+                          "description": "The validator (the name of a registry bean)"
+                        },
+                        "className": {
+                          "type": "string",
+                          "description": "The validator type (created with its default constructor)."
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  ],
+                  "description": "An IValidator bean (ref) or type (className)."
+                }
+              },
+              "additionalProperties": false
+            }
+          ]
+        },
+        "description": "Caravan: data type validators added to the context."
       }
     },
     "additionalProperties": false,
@@ -499,6 +1433,14 @@
             "steps": {
               "$ref": "#/definitions/steps",
               "description": "The steps of the block."
+            },
+            "variableReceive": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A variable receiving the consumed message (body; headers as name.header.key); the route starts with an empty message."
             }
           },
           "additionalProperties": false,
@@ -2823,6 +3765,110 @@
         "from": {
           "$ref": "#/definitions/from",
           "description": "The route's endpoint and steps."
+        },
+        "nodePrefixId": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "A prefix added to the ids of the route's nodes."
+        },
+        "precondition": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "A Simple predicate (usually on properties): the route is added only when it is true."
+        },
+        "routePolicy": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "Route policies: comma-separated names of IRoutePolicy beans."
+        },
+        "routePolicyRef": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "Alias of routePolicy."
+        },
+        "inputType": {
+          "anyOf": [
+            {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "urn": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ],
+                  "description": "The data type: scheme:name (json:Order, clr:MyApp.Order)."
+                },
+                "validate": {
+                  "type": [
+                    "boolean",
+                    "string"
+                  ],
+                  "description": "Whether the message is validated with the context's validator for the type."
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "urn"
+              ]
+            }
+          ],
+          "description": "The data type the route expects (transformed and optionally validated on entry)."
+        },
+        "outputType": {
+          "anyOf": [
+            {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ]
+            },
+            {
+              "type": "object",
+              "properties": {
+                "urn": {
+                  "type": [
+                    "string",
+                    "number",
+                    "boolean"
+                  ],
+                  "description": "The data type: scheme:name (json:Order, clr:MyApp.Order)."
+                },
+                "validate": {
+                  "type": [
+                    "boolean",
+                    "string"
+                  ],
+                  "description": "Whether the message is validated with the context's validator for the type."
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "urn"
+              ]
+            }
+          ],
+          "description": "The data type the route produces (transformed and optionally validated on exit)."
         }
       },
       "additionalProperties": false,
@@ -2972,6 +4018,14 @@
                 ]
               },
               "description": "Interceptors of sends."
+            },
+            "precondition": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A Simple predicate (usually on properties): the configuration is added only when it is true."
             }
           },
           "additionalProperties": false
@@ -3089,6 +4143,9 @@
         "convertHeaderTo": {
           "$ref": "#/definitions/step.convertHeaderTo"
         },
+        "convertVariableTo": {
+          "$ref": "#/definitions/step.convertVariableTo"
+        },
         "delay": {
           "$ref": "#/definitions/step.delay"
         },
@@ -3140,6 +4197,9 @@
         "pipeline": {
           "$ref": "#/definitions/step.pipeline"
         },
+        "poll": {
+          "$ref": "#/definitions/step.poll"
+        },
         "pollEnrich": {
           "$ref": "#/definitions/step.pollEnrich"
         },
@@ -3160,6 +4220,9 @@
         },
         "removeProperty": {
           "$ref": "#/definitions/step.removeProperty"
+        },
+        "removeVariable": {
+          "$ref": "#/definitions/step.removeVariable"
         },
         "resequence": {
           "$ref": "#/definitions/step.resequence"
@@ -3194,6 +4257,12 @@
         "setProperty": {
           "$ref": "#/definitions/step.setProperty"
         },
+        "setVariable": {
+          "$ref": "#/definitions/step.setVariable"
+        },
+        "setVariables": {
+          "$ref": "#/definitions/step.setVariables"
+        },
         "sort": {
           "$ref": "#/definitions/step.sort"
         },
@@ -3205,6 +4274,9 @@
         },
         "stop": {
           "$ref": "#/definitions/step.stop"
+        },
+        "threads": {
+          "$ref": "#/definitions/step.threads"
         },
         "throttle": {
           "$ref": "#/definitions/step.throttle"
@@ -4383,6 +5455,75 @@
       ],
       "description": "Converts a header to a type."
     },
+    "step.convertVariableTo": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "The variable name."
+        },
+        "type": {
+          "type": "string",
+          "description": "The target type."
+        },
+        "toName": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "The variable receiving the result (default: name)."
+        },
+        "mandatory": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "description": "Whether a failed conversion fails the exchange (default true)."
+        },
+        "charset": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "Accepted for compatibility with Camel; no effect in Caravan (strings are converted with UTF-8)."
+        },
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "The id of the node (unique in the context)."
+        },
+        "description": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "A description of the node."
+        },
+        "disabled": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "description": "Whether the node is disabled (skipped when the route is created)."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "type"
+      ],
+      "description": "Converts a variable to a type."
+    },
     "step.delay": {
       "type": "object",
       "properties": {
@@ -4864,6 +6005,22 @@
                 "string"
               ],
               "description": "Accepted for compatibility with Camel; no effect in Caravan (components start on use)."
+            },
+            "variableSend": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A variable whose value is sent as the resource's body."
+            },
+            "variableReceive": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A variable receiving the reply instead of the strategy merging it."
             },
             "id": {
               "type": [
@@ -7068,6 +8225,87 @@
       ],
       "description": "Runs its steps in order (a block)."
     },
+    "step.poll": {
+      "anyOf": [
+        {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "uri": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The endpoint URI (Simple)."
+            },
+            "parameters": {
+              "type": [
+                "object",
+                "null"
+              ],
+              "description": "Endpoint options appended to the URI as query parameters."
+            },
+            "timeout": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "How long to wait (default 20 s; negative: forever; 0: do not wait). (milliseconds, or a duration such as 5s, 1m30s, PT5S)"
+            },
+            "variableReceive": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A variable receiving the message instead of the exchange."
+            },
+            "autoStartComponents": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (components start on use)."
+            },
+            "id": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The id of the node (unique in the context)."
+            },
+            "description": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A description of the node."
+            },
+            "disabled": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether the node is disabled (skipped when the route is created)."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "uri"
+          ]
+        }
+      ],
+      "description": "Polls a message from an endpoint (uri, Simple) into the exchange; the body is null when nothing arrives in time."
+    },
     "step.pollEnrich": {
       "anyOf": [
         {
@@ -7142,6 +8380,14 @@
                 "string"
               ],
               "description": "Accepted for compatibility with Camel; no effect in Caravan (components start on use)."
+            },
+            "variableReceive": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A variable receiving the polled message instead of the strategy merging it."
             },
             "id": {
               "type": [
@@ -7762,6 +9008,58 @@
         }
       ],
       "description": "Removes an exchange property."
+    },
+    "step.removeVariable": {
+      "anyOf": [
+        {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The variable name or pattern."
+            },
+            "id": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The id of the node (unique in the context)."
+            },
+            "description": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A description of the node."
+            },
+            "disabled": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether the node is disabled (skipped when the route is created)."
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "name"
+          ]
+        }
+      ],
+      "description": "Removes the variables matching a name or pattern (*, wildcard, regular expression; global:* for global ones)."
     },
     "step.resequence": {
       "type": "object",
@@ -9197,6 +10495,257 @@
       ],
       "description": "Sets an exchange property to the value of an expression."
     },
+    "step.setVariable": {
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "The variable name."
+        },
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "The id of the node (unique in the context)."
+        },
+        "description": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "A description of the node."
+        },
+        "disabled": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "description": "Whether the node is disabled (skipped when the route is created)."
+        },
+        "constant": {
+          "$ref": "#/definitions/language.constant"
+        },
+        "exchangeProperty": {
+          "$ref": "#/definitions/language.exchangeProperty"
+        },
+        "header": {
+          "$ref": "#/definitions/language.header"
+        },
+        "language": {
+          "$ref": "#/definitions/language.language"
+        },
+        "method": {
+          "$ref": "#/definitions/language.method"
+        },
+        "ref": {
+          "$ref": "#/definitions/language.ref"
+        },
+        "simple": {
+          "$ref": "#/definitions/language.simple"
+        },
+        "tokenize": {
+          "$ref": "#/definitions/language.tokenize"
+        },
+        "expression": {
+          "$ref": "#/definitions/expression"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
+      "allOf": [
+        {
+          "anyOf": [
+            {
+              "required": [
+                "constant"
+              ]
+            },
+            {
+              "required": [
+                "exchangeProperty"
+              ]
+            },
+            {
+              "required": [
+                "header"
+              ]
+            },
+            {
+              "required": [
+                "language"
+              ]
+            },
+            {
+              "required": [
+                "method"
+              ]
+            },
+            {
+              "required": [
+                "ref"
+              ]
+            },
+            {
+              "required": [
+                "simple"
+              ]
+            },
+            {
+              "required": [
+                "tokenize"
+              ]
+            },
+            {
+              "required": [
+                "expression"
+              ]
+            }
+          ]
+        }
+      ],
+      "description": "Sets a variable (exchange; global:name; route:name) to the value of an expression."
+    },
+    "step.setVariables": {
+      "type": "object",
+      "properties": {
+        "variables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": [
+                  "string",
+                  "number",
+                  "boolean"
+                ],
+                "description": "The variable name."
+              },
+              "constant": {
+                "$ref": "#/definitions/language.constant"
+              },
+              "exchangeProperty": {
+                "$ref": "#/definitions/language.exchangeProperty"
+              },
+              "header": {
+                "$ref": "#/definitions/language.header"
+              },
+              "language": {
+                "$ref": "#/definitions/language.language"
+              },
+              "method": {
+                "$ref": "#/definitions/language.method"
+              },
+              "ref": {
+                "$ref": "#/definitions/language.ref"
+              },
+              "simple": {
+                "$ref": "#/definitions/language.simple"
+              },
+              "tokenize": {
+                "$ref": "#/definitions/language.tokenize"
+              },
+              "expression": {
+                "$ref": "#/definitions/expression"
+              }
+            },
+            "additionalProperties": false,
+            "required": [
+              "name"
+            ],
+            "allOf": [
+              {
+                "anyOf": [
+                  {
+                    "required": [
+                      "constant"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "exchangeProperty"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "header"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "language"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "method"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "ref"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "simple"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "tokenize"
+                    ]
+                  },
+                  {
+                    "required": [
+                      "expression"
+                    ]
+                  }
+                ]
+              }
+            ]
+          },
+          "description": "The variables: a name and an expression each."
+        },
+        "id": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "The id of the node (unique in the context)."
+        },
+        "description": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "A description of the node."
+        },
+        "disabled": {
+          "type": [
+            "boolean",
+            "string"
+          ],
+          "description": "Whether the node is disabled (skipped when the route is created)."
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "variables"
+      ],
+      "description": "Sets several variables, in order."
+    },
     "step.sort": {
       "anyOf": [
         {
@@ -9571,6 +11120,113 @@
       ],
       "description": "Stops routing the exchange."
     },
+    "step.threads": {
+      "anyOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "poolSize": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "The number of workers kept (default 10)."
+            },
+            "maxPoolSize": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "The maximum number of workers (default 20)."
+            },
+            "maxQueueSize": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "The queue capacity (default 1000; 0 none; -1 unbounded)."
+            },
+            "rejectedPolicy": {
+              "type": "string",
+              "enum": [
+                "Abort",
+                "CallerRuns"
+              ],
+              "description": "What happens when the pool and queue are full."
+            },
+            "callerRunsWhenRejected": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Camel 3: true means rejectedPolicy CallerRuns, false Abort."
+            },
+            "threadName": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A name for the pool."
+            },
+            "steps": {
+              "$ref": "#/definitions/steps",
+              "description": "Caravan: steps run by the pool (default: the rest of the route)."
+            },
+            "keepAliveTime": {
+              "type": [
+                "integer",
+                "string"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (workers are tasks)."
+            },
+            "timeUnit": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (workers are tasks)."
+            },
+            "allowCoreThreadTimeOut": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Accepted for compatibility with Camel; no effect in Caravan (workers are tasks)."
+            },
+            "id": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The id of the node (unique in the context)."
+            },
+            "description": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A description of the node."
+            },
+            "disabled": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether the node is disabled (skipped when the route is created)."
+            }
+          },
+          "additionalProperties": false
+        }
+      ],
+      "description": "Hands the rest of the route (or, as a Caravan extension, its steps) to a bounded worker pool."
+    },
     "step.throttle": {
       "type": "object",
       "properties": {
@@ -9826,6 +11482,22 @@
               ],
               "description": "The exchange pattern used for the send."
             },
+            "variableSend": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A variable whose value is sent as the body instead of the message body."
+            },
+            "variableReceive": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A variable receiving the reply (body; headers as name.header.key); the message is left unchanged."
+            },
             "id": {
               "type": [
                 "string",
@@ -9921,6 +11593,22 @@
               ],
               "description": "Accepted for compatibility with Camel; no effect in Caravan (components start on use)."
             },
+            "variableSend": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A variable whose value is sent as the body instead of the message body."
+            },
+            "variableReceive": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A variable receiving the reply (body; headers as name.header.key); the message is left unchanged."
+            },
             "id": {
               "type": [
                 "string",
@@ -9954,112 +11642,84 @@
       "description": "Sends the exchange to an endpoint computed per exchange (a Simple expression)."
     },
     "step.transform": {
-      "type": "object",
-      "properties": {
-        "id": {
-          "type": [
-            "string",
-            "number",
-            "boolean"
-          ],
-          "description": "The id of the node (unique in the context)."
-        },
-        "description": {
-          "type": [
-            "string",
-            "number",
-            "boolean"
-          ],
-          "description": "A description of the node."
-        },
-        "disabled": {
-          "type": [
-            "boolean",
-            "string"
-          ],
-          "description": "Whether the node is disabled (skipped when the route is created)."
-        },
-        "constant": {
-          "$ref": "#/definitions/language.constant"
-        },
-        "exchangeProperty": {
-          "$ref": "#/definitions/language.exchangeProperty"
-        },
-        "header": {
-          "$ref": "#/definitions/language.header"
-        },
-        "language": {
-          "$ref": "#/definitions/language.language"
-        },
-        "method": {
-          "$ref": "#/definitions/language.method"
-        },
-        "ref": {
-          "$ref": "#/definitions/language.ref"
-        },
-        "simple": {
-          "$ref": "#/definitions/language.simple"
-        },
-        "tokenize": {
-          "$ref": "#/definitions/language.tokenize"
-        },
-        "expression": {
-          "$ref": "#/definitions/expression"
-        }
-      },
-      "additionalProperties": false,
-      "allOf": [
+      "anyOf": [
         {
-          "anyOf": [
-            {
-              "required": [
-                "constant"
-              ]
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "fromType": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The current data type (scheme:name); default: the message's."
             },
-            {
-              "required": [
-                "exchangeProperty"
-              ]
+            "toType": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The data type to transform to (scheme:name), instead of an expression."
             },
-            {
-              "required": [
-                "header"
-              ]
+            "id": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "The id of the node (unique in the context)."
             },
-            {
-              "required": [
-                "language"
-              ]
+            "description": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A description of the node."
             },
-            {
-              "required": [
-                "method"
-              ]
+            "disabled": {
+              "type": [
+                "boolean",
+                "string"
+              ],
+              "description": "Whether the node is disabled (skipped when the route is created)."
             },
-            {
-              "required": [
-                "ref"
-              ]
+            "constant": {
+              "$ref": "#/definitions/language.constant"
             },
-            {
-              "required": [
-                "simple"
-              ]
+            "exchangeProperty": {
+              "$ref": "#/definitions/language.exchangeProperty"
             },
-            {
-              "required": [
-                "tokenize"
-              ]
+            "header": {
+              "$ref": "#/definitions/language.header"
             },
-            {
-              "required": [
-                "expression"
-              ]
+            "language": {
+              "$ref": "#/definitions/language.language"
+            },
+            "method": {
+              "$ref": "#/definitions/language.method"
+            },
+            "ref": {
+              "$ref": "#/definitions/language.ref"
+            },
+            "simple": {
+              "$ref": "#/definitions/language.simple"
+            },
+            "tokenize": {
+              "$ref": "#/definitions/language.tokenize"
+            },
+            "expression": {
+              "$ref": "#/definitions/expression"
             }
-          ]
+          },
+          "additionalProperties": false
         }
       ],
-      "description": "Replaces the body with the value of an expression."
+      "description": "Replaces the body with the value of an expression, or transforms the message to a data type (toType) with the context's transformers."
     },
     "step.unmarshal": {
       "anyOf": [
@@ -10838,6 +12498,14 @@
               ],
               "description": "Ignores URIs that do not resolve to an endpoint."
             },
+            "variableSend": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A variable whose value the tap sends as the body."
+            },
             "dynamicUri": {
               "type": [
                 "boolean",
@@ -10959,6 +12627,14 @@
             "$ref": "#/definitions/bean"
           },
           "description": "Beans local to the created route."
+        },
+        "prefixId": {
+          "type": [
+            "string",
+            "number",
+            "boolean"
+          ],
+          "description": "A prefix added to the ids of the created route's nodes."
         }
       },
       "additionalProperties": false,

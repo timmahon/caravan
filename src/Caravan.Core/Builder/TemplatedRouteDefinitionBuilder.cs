@@ -59,6 +59,16 @@ public sealed class TemplatedRouteDefinitionBuilder
         return this;
     }
 
+    /// <summary>Prefixes the ids of the created route's nodes (Camel's <c>prefixId</c>).</summary>
+    /// <param name="prefixId">The prefix.</param>
+    /// <returns>This builder.</returns>
+    public TemplatedRouteDefinitionBuilder PrefixId(string prefixId)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(prefixId);
+        Definition.PrefixId = prefixId;
+        return this;
+    }
+
     /// <summary>Changes the route's copy of the template's route before it is added.</summary>
     /// <param name="handler">The callback.</param>
     /// <returns>This builder.</returns>

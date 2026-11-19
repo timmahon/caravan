@@ -49,9 +49,9 @@ internal static class DataFormatCatalog
         context.DataFormats.Names.Contains(name, StringComparer.OrdinalIgnoreCase) || context.Registry.Lookup(name) is IDataFormat;
 
     /// <summary>The data format of a <c>marshal</c>/<c>unmarshal</c> step: its name and, when options are given, the configured instance.</summary>
-    public static (string Name, IDataFormat? DataFormat) Resolve(YamlObject options)
+    public static (string Name, IDataFormat? DataFormat) Resolve(YamlObject options, params string[] otherOptions)
     {
-        var dataFormats = options.Names.Where(n => n is not ("allowNullBody" or "id" or "description" or "disabled"))
+        var dataFormats = options.Names.Where(n => n is not ("allowNullBody" or "id" or "description" or "disabled") && !otherOptions.Contains(n))
             .Select(n => (Name: n, Key: (YamlDotNet.RepresentationModel.YamlNode?)null, Value: options.Raw(n)!))
             .Concat(options.DynamicEntries.Select(e => (e.Name, Key: (YamlDotNet.RepresentationModel.YamlNode?)e.Key, e.Value)))
             .ToList();

@@ -12,10 +12,15 @@ namespace Caravan.Components.Kamelet;
 /// <c>caravan.kamelet.{templateId}.{name}</c>, then the template's defaults.
 /// <para>URIs: <c>kamelet:templateId[/routeId][?routeId=..&amp;param=value...]</c>, <c>kamelet:source</c> (template input), <c>kamelet:sink</c>.</para>
 /// </summary>
-/// <remarks>Consuming from a Kamelet (<c>from("kamelet:...")</c>) is not supported yet.</remarks>
+/// <remarks>
+/// Consuming from a Kamelet (<c>from("kamelet:templateId?param=v")</c>) creates the template's route when the consumer starts: the template then
+/// consumes from its own endpoint (a timer, a queue...) and every exchange it sends to <c>kamelet:sink</c> is processed by the consuming route,
+/// synchronously, as with <c>direct</c>. The created route is stopped when the consumer stops.
+/// </remarks>
 public sealed class KameletComponent : ComponentBase
 {
     private readonly ConcurrentDictionary<string, IProcessor> _sources = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, IProcessor> _sinks = new(StringComparer.Ordinal);
 
     /// <inheritdoc />
     protected override EndpointBase CreateEndpoint(string uri, string remaining, IDictionary<string, string> parameters)
@@ -29,7 +34,7 @@ public sealed class KameletComponent : ComponentBase
                 return new KameletSourceEndpoint(uri, this, routeId ?? throw new ArgumentException("kamelet:source requires the routeId option"));
             case "sink":
                 parameters.Clear();
-                return new KameletSinkEndpoint(uri, this);
+                return new KameletSinkEndpoint(uri, this) { RouteId = routeId };
         }
 
         var slash = remaining.IndexOf('/', StringComparison.Ordinal);
@@ -66,4 +71,17 @@ public sealed class KameletComponent : ComponentBase
         _sources.TryRemove(new KeyValuePair<string, IProcessor>(routeId, processor));
 
     internal IProcessor? GetSource(string routeId) => _sources.GetValueOrDefault(routeId);
+
+    internal void AddSink(string routeId, IProcessor processor)
+    {
+        if (!_sinks.TryAdd(routeId, processor))
+        {
+            throw new InvalidOperationException($"Cannot add a 2nd consumer to the kamelet route {routeId}");
+        }
+    }
+
+    internal void RemoveSink(string routeId, IProcessor processor) =>
+        _sinks.TryRemove(new KeyValuePair<string, IProcessor>(routeId, processor));
+
+    internal IProcessor? GetSink(string routeId) => _sinks.GetValueOrDefault(routeId);
 }

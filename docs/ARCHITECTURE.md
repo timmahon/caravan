@@ -81,6 +81,10 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `IRestConsumerFactory` / `RestComponent` / `RestEndpoint` | Transport SPI of the REST DSL and the `rest:` endpoints services consume from | `RestConsumerFactory` / `RestComponent` / `RestEndpoint` |
 | `RestBindingDefinition` / `RestBindingProcessor` | Binding, validation and CORS around a REST service | `RestBindingDefinition` / `RestBindingAdvice` |
 | `IHeaderFilterStrategy` / `DefaultHeaderFilterStrategy` | Which headers cross between messages and a transport | `HeaderFilterStrategy` / `DefaultHeaderFilterStrategy` |
+| `VariableRepositoryRegistry` / `IVariableRepository` / `Exchange.Variables` | Camel 4 variables: exchange, global and route variables (see "Variables") | `VariableRepository` / `ExchangeHelper` variable methods |
+| `IRoutePolicy` / `IRoutePolicyFactory` / `RoutePolicySupport` (`Caravan.RoutePolicies`) | Route lifecycle and exchange callbacks, throttling policies (see "Route policies") | `RoutePolicy` / `RoutePolicyFactory` / `RoutePolicySupport` |
+| `ThreadsProcessor` | The `threads` EIP: a bounded worker pool (see "Threads and poll") | `ThreadsProcessor` + `ThreadPoolExecutor` |
+| `DataType` / `ITransformer` / `IValidator` / `TransformerRegistry` / `ValidatorRegistry` (`Caravan.DataTypes`) | Data type contracts (`inputType`/`outputType`), `transform` with `toType` (see "Data types") | `DataType` / `Transformer` / `Validator` / `TransformerRegistry` / `ValidatorRegistry` / `ContractAdvice` |
 | `Caravan.AspNetCore`: `PlatformHttpComponent`, `PlatformHttpEngine`, `MapCaravan`, `OpenApiGenerator` | `platform-http` on ASP.NET Core endpoint routing, REST transport, OpenAPI, management and health endpoints (see "ASP.NET Core") | `camel-platform-http(-vertx)`, `camel-openapi-java`, management/health endpoints of Camel main |
 
 ### Error semantics
@@ -465,7 +469,7 @@ needs the test framework to call `SetUpAsync`.
 **Languages SPI.** `ILanguage` (`Caravan.Spi`: `CreateExpression(text)`, `CreatePredicate(text)`, thread-safe) is resolved by name with
 `context.ResolveLanguage(name)` (`LanguageRegistry`, `ICaravanContext.Languages`): languages added to the context (`Languages.Add`), then an
 `ILanguage` bean bound under the name, then global ones (`LanguageRegistry.RegisterGlobal`). Built-ins (`Caravan.Language`): `simple`,
-`constant` (the text), `header` and `exchangeProperty` (the named value), `tokenize` (the body tokenized on the text), `ref` (a registry
+`constant` (the text), `header`, `exchangeProperty` and `variable` (the named value), `tokenize` (the body tokenized on the text), `ref` (a registry
 `IExpression`/`IPredicate`, looked up when evaluated), `bean`/`method` (a bean method's result, see "Bean binding"). DSLs that read routes from text (the YAML DSL) resolve expressions this way:
 `LanguageExpression(language, text, resultType)` (also returned by `Lang.Language`) resolves the language on first use, resolves `{{placeholders}}`
 in the text first (except for `simple`, which does it itself) and is rewritten with the parameters of route templates, like Simple texts.
@@ -490,6 +494,8 @@ resolved text is compiled and cached), so they work in `log`, `toD`, `setBody(si
   `header.name` / `header:name` / `header[name]` / `headers.name` / `in.header(s).name`, `headerAs(name,Type)`, `headers`,
   `exchangeProperty.name` / `[name]`, `exchangePropertyAs(name,Type)`, `exchangeId`, `id`/`messageId`, `routeId`, `fromRouteId`,
   `camelId`/`contextName`, `stepId`, `exchange`, `exception` (the exception, or `CaravanExceptionCaught`), `exception.message`,
+  `variable.name` / `variable:name` / `variable[name]` (with prefixes: `${variable.global:x}`, OGNL after the name), `variables` (OGNL allowed:
+  `${variables.size}`), `variableAs(name,Type)`, `messageTimestamp` (the `CaravanMessageTimestamp` header in Unix milliseconds, 0 without),
   `exception.stacktrace`, `date:command[:pattern]`, `date-with-timezone:command:zone:pattern`, `properties:key[:default]`,
   `propertiesExist:[!]key`, `random(max)`/`random(min,max)`, `uuid` (the context's `UuidGenerator`; `uuid:default|classic|random|short|simple`), `null`,
   `empty(string|list|map|set)`, `env:NAME`/`env.NAME`/`sysenv.NAME`, `sys.name`, `collate(n)`, `skip(n)`, `join(separator,prefix,source)`,
@@ -504,7 +510,7 @@ resolved text is compiled and cached), so they work in `log`, `toD`, `setBody(si
   on dictionaries (also `.key` when there is no such property), indexers. A null root yields null; a null later in the path fails unless
   the step is null-safe (`?.`, `?[`). For headers and properties the full name is tried first (`${header.a.b}` reads the header `a.b`
   if it exists). Nested functions build the function text at run time: `${header.${header.name}}`, `${body.Substring(${header.n})}`.
-- **Dates**: commands `now`, `millis` (Unix milliseconds), `exchangeCreated`, `file` (the `CaravanFileLastModified` header), `header.x`, `exchangeProperty.x` (a `DateTimeOffset`,
+- **Dates**: commands `now`, `millis` (Unix milliseconds), `exchangeCreated`, `messageTimestamp`, `file` (the `CaravanFileLastModified` header), `header.x`, `exchangeProperty.x`, `variable.x` (a `DateTimeOffset`,
   `DateTime` — unspecified kind is UTC —, Unix milliseconds or a parsable string), with offsets `now-1h30m`, `header.due+2d` (units `d h m
   s ms`). Without pattern the value is a `DateTimeOffset` (or `long` for `millis`); patterns are Java `SimpleDateFormat` (`yyyy MM dd HH
   mm ss SSS`, `EEE`, `MMM`, `a`, `Z`, `X`, `'quoted'`, ... plus .NET `f`), formatted in `context.TimeProvider.LocalTimeZone` (UTC with
@@ -522,8 +528,8 @@ resolved text is compiled and cached), so they work in `log`, `toD`, `setBody(si
   function (`${bean:name?method=foo}`, `${bean:name.foo}`, `${bean:class:Full.Type?method=foo}`) and the `file:` functions
   (`FileLanguageFunction.Parse`) are registered this way by `SimpleLanguage`'s static constructor (`BeanExpression.Parse`).
 
-Differences from Camel: no `messageTimestamp`, `variable(s)`, `jsonpath`/`xpath` or the newer string
-functions; `sys.name` reads `AppContext.GetData`; `exception.stacktrace` is `Exception.ToString()`; `collate`/`skip`/`join` split a string
+Differences from Camel: no `jsonpath`/`xpath` or the string, math and collection functions added through Camel 4.x (`replace`, `substring*`,
+`trim`, `uppercase`, `iif`, `sum`, `split`, ...); `sys.name` reads `AppContext.GetData`; `exception.stacktrace` is `Exception.ToString()`; `collate`/`skip`/`join` split a string
 body on commas (Camel's iterator) unlike `split`; unquoted words inside `${...}` are function names, not text (quote literals there);
 `$${` is not an escape (use `\${`); unknown escapes keep the backslash; header names containing `+`/`-` cannot be used in `date:` commands
 (those characters start offsets, as in Camel); OGNL member names match case-insensitively as a fallback for Java-style names.
@@ -641,6 +647,9 @@ defaults instead of being matched by type; method names fall back to a case-inse
   data set has `minRate` messages, `produceDelay` (3 ms) apart, with the `CaravanDataSetIndex` header; its producer checks order (`dataSetIndex`
   lenient/strict/off) and content per message after `consumeDelay` (`MockEndpoint.PerformAssertionsAsync`). `dataset-test:uri` reads the
   expected bodies from `uri` when it starts (polling until `timeout`, 2 s), optionally `split`, and expects them (`anyOrder`).
+- **language** (`language:name[:script]?transform=true&cacheScript=true`, `Caravan.Components.Languages`): evaluates the script — or, without
+  one, the message body as the script — in a language of the context; the result becomes the body unless `transform=false`. Producer only;
+  scripts containing `?` or `&` go in `RAW(...)`.
 - **browse** (`browse:name?browseLimit=n`): records a copy of each exchange (`Exchanges`), then hands it to its consumer like `direct`.
 
 ### File component
@@ -889,11 +898,17 @@ get the error handler, `onException`, `onCompletion` and interceptors of their r
   processed by that route synchronously, like `direct`, and returns to the caller when it ends. `kamelet:sink` marks the end and does
   nothing. Kamelet routes are never removed by route filters. Templates can be packaged in a library's `RouteBuilder` and used from any
   context that adds it.
+- **Consuming from Kamelets** (`from("kamelet:templateId[/routeId]?param=v")`, `KameletConsumer`). When the consumer starts, the template's
+  route is created (once per endpoint) with every `to("kamelet:sink")` rewritten to `kamelet:sink?routeId=<id>`, after the consumer registered
+  itself as that route's sink; the template consumes from its own endpoint (a timer, a queue, ...) and each exchange reaching the sink is
+  processed by the consuming route synchronously, like `direct`. Stopping the consumer stops the Kamelet's route (unless the context is
+  stopping, which stops it anyway); starting it again restarts it. A template consuming from `kamelet:source` cannot be consumed.
+- **Node id prefixes.** `TemplatedRoute(id, r => r.PrefixId("a-"))` (YAML `prefixId`) sets the created route's `NodePrefixId`.
 
 Differences from Camel: substitution happens once, in the copy, rather than through local properties at reification (same result for strings
 and Simple, but lambdas cannot see parameters — use `rtc` in a bean factory or configurer); local beans also get a unique name (Camel binds
 them under their name only, which a context-wide endpoint cache would share between routes); `TemplateBean` takes factories or types, not
-scripts; no `prefixId`; consuming from a Kamelet (`from("kamelet:x")`) and Kamelet YAML specs are not supported.
+scripts; Kamelet YAML specs (`kind: Kamelet`) are not read.
 
 ### Route configuration
 
@@ -916,7 +931,111 @@ not changed (so AdviceWith and restarts see the same definition).
   - `onCompletion`: the route's own, else its builder's, else those of all selected configurations;
   - intercepts of all three kinds: the route's (builder, advice) followed by the configurations'.
 
-Differences from Camel: unknown exact ids fail route creation; there is no `precondition`.
+- **Preconditions.** `RouteConfiguration(id, c => c.Precondition("{{feature}}"))` (YAML `precondition`): a configuration whose Simple
+  predicate is false when it is added to the context is skipped (debug log).
+
+Differences from Camel: unknown exact ids fail route creation.
+
+### Route options: precondition and node prefix
+
+- **precondition** (`RouteDefinition.Precondition`, `.Precondition("{{orders.enabled}}")`, YAML `precondition`): property placeholders are
+  resolved, then the text is evaluated as a Simple predicate on an empty exchange when the route is *added* to the context (after route
+  filters); false or an empty text (e.g. a missing `{{?optional}}`) drops the route with a debug log, as a route filter would. Typically on
+  properties: `${properties:env} == 'prod'`.
+- **nodePrefixId** (`RouteDefinition.NodePrefixId`, `.NodePrefixId("p-")`): when the route is added every node gets an id: explicit ids are
+  prefixed, missing ones are generated with the prefix (`p-to1`). The route id is not prefixed.
+
+### Variables
+
+Camel 4's variables (`Caravan.Spi.IVariableRepository`, `VariableRepositoryRegistry`, `Support.VariableHelper`): user data that, unlike
+headers, never leaves with the message, and unlike exchange properties is meant for routes rather than for EIP internals.
+
+- **Scopes.** A name without prefix is an **exchange** variable (`Exchange.Variables`, copied by `Copy`, correlated copies — split parts,
+  multicast branches, `seda` hand-overs — and `CopyResultsFrom`). `global:name` lives in `context.VariableRepositories.Global` (also
+  `context.GetVariable/SetVariable(name)`); `route:name` in the route repository under `currentRouteId:name`, `route:routeId:name` reads another
+  route's; `id:name` uses a repository added with `VariableRepositories.Add` or bound in the registry under `id`. An unknown prefix throws
+  `ArgumentException` (as Camel). Setting null removes a variable. Repositories are thread-safe (`InMemoryVariableRepository`).
+- **API.** `exchange.GetVariable(name)`, `GetVariable<T>`, `SetVariable`, `RemoveVariable(pattern)` (`*`, wildcards and regular expressions,
+  prefixed or not: `global:*`), `HasVariables`.
+- **EIPs** (`VariableDsl`): `.SetVariable(name, expr | lambda)`, `.SetVariables((name, expr), ...)`, `.RemoveVariable(pattern)`,
+  `.ConvertVariableTo(name, type, toName, mandatory)` (definitions `SetVariableDefinition`, `SetVariablesDefinition`, `RemoveVariableDefinition`,
+  `ConvertVariableDefinition`). Languages: Simple's `${variable.x}`/`${variables}`/`${variableAs(x,T)}`, the `variable` language,
+  `Expr.Variable`/`Lang.Variable`.
+- **variableSend / variableReceive** (`Support.VariableSendReceive`). On `to` (`.ToV(uri, send, receive)`), `toD`, `enrich`
+  (`variableSend`, `variableReceive` named parameters), `pollEnrich`/`poll` (`variableReceive`) and `from` (`RouteBuilder.FromV(uri, variable)`,
+  YAML `from.variableReceive`): the body sent is the variable's value; the reply's body is stored in the receive variable and each of its
+  headers as `name.header.key` (old ones removed), and the exchange's message is restored as it was before the send. With only a send variable
+  the original body comes back after an `InOnly` send (an `InOut` reply is kept). A failed send stores nothing and restores the message. For
+  `enrich`/`pollEnrich` a receive variable replaces the aggregation strategy. `fromV` moves the consumed message into the variable and starts
+  the route with an empty message.
+
+Differences from Camel: received headers are stored as `name.header.key` exchange variables; with only `variableSend` the original body is
+restored after `InOnly` sends.
+
+### Route policies
+
+`Caravan.Spi.IRoutePolicy` (every callback has an empty default): `OnInit` (route created), `OnStart`, `OnStop`, `OnSuspend`, `OnResume`,
+`OnRemove`, `OnExchangeBegin` and `OnExchangeDone`. A route's policies are `RouteDefinition.RoutePolicies` (`.RoutePolicy(p1, p2)`),
+`RoutePolicyRefs` (`.RoutePolicyRef("a,b")`, YAML `routePolicy`; a missing bean fails route creation) and those created by
+`context.RoutePolicyFactories` (`IRoutePolicyFactory`, per route), resolved when the route is created (`Route.RoutePolicies`). Exchange callbacks
+run in `RouteProcessor` for every exchange entering the route: begin after the inflight registration, done after the unit of work completed
+and the exchange left the inflight counts (so `route.InflightCount` excludes it). A throwing policy is logged and ignored.
+
+- **RoutePolicySupport** (`Caravan.RoutePolicies`): virtual no-op callbacks plus `SuspendConsumerAsync(route)`/`ResumeConsumerAsync(route)`,
+  which change the route's *consumer* in the background, one operation after the other (`PendingOperation`): a callback runs inside the
+  consumer's own work, which a suspension waits for. The route's status stays `Started`, as in Camel; a consumer that cannot suspend is stopped
+  and started.
+- **ThrottlingInflightRoutePolicy**: on exchange done, more than `MaxInflightExchanges` (1000) inflight exchanges — in the route, or in the
+  context with `ThrottlingScope.Context` — suspend the consumer; at or below `ResumePercentOfMax` (70 %) of the maximum it resumes.
+- **ThrottlingExceptionRoutePolicy** (a circuit breaker on the consumer): failed exchanges (the exception they still carry, matching
+  `ThrottledExceptions` along the cause chain, or any) within `FailureWindow` (60 s) reaching `FailureThreshold` (50) open the circuit and suspend
+  the consumer; after `HalfOpenAfter` (30 s, a timer on the context's clock) it half-opens — if `HalfOpenHandler.IsReadyToBeClosed()` agrees,
+  else it stays open for another period — and resumes the consumer: the next exchange done closes it (success) or opens it again (failure).
+  `KeepOpen` forces it open. `State`, `Failures` show it.
+
+Differences from Camel: the context-scoped inflight policy is evaluated when the route's own exchanges complete (Camel also listens to other
+routes' completions); a `direct` consumer that is "suspended" is stopped, so callers get `DirectConsumerNotAvailableException` (use
+`block=false` or a queue in front).
+
+### Threads and poll
+
+- **threads** (`ThreadsDefinition`, `ThreadsProcessor`, `.Threads(poolSize, maxPoolSize, maxQueueSize, rejectedPolicy, threadName)`): Java's
+  `ThreadPoolExecutor` rules on tasks: up to `PoolSize` (10) exchanges run at once; more wait in a queue of `MaxQueueSize` (1000; 0 none; -1
+  unbounded); when the queue is full extra workers start up to `MaxPoolSize` (20); beyond that `ThreadPoolRejectedPolicy.CallerRuns` (default,
+  Camel's profile default) processes on the caller's flow and `Abort` fails with `RejectedExecutionException`. The chained form (no block) takes
+  the **rest of the block**: `RouteContext.CreateBlockProcessor` hands the steps following a block-less `threads` to it (they stay siblings in
+  the model, so YAML, AdviceWith and node ids see them); `.Threads(t => ..., ...)` runs a block. The caller awaits the outcome (Camel's caller
+  waits through its async callback too), so `threads` is an asynchronous boundary and a bulkhead. Stopping the processor fails queued exchanges.
+- **poll** (`PollDefinition`, `.Poll(uri, timeout, variableReceive)`): Camel 4's simpler `pollEnrich`: the URI is Simple, the received message
+  replaces the exchange's (`CopyAggregationStrategy`), a timeout (default 20 s; negative waits forever) gives a null body.
+
+Differences from Camel: no executor service references, keep-alive or thread names (workers are thread-pool tasks); the Camel 3
+`Discard`/`DiscardOldest` policies are not supported (Camel 4 dropped them too).
+
+### Data types: transformers and validators
+
+Camel's data type contracts (`Caravan.DataTypes`). A `DataType` is `scheme:name` (`json:Order`, `xml`, `clr:MyApp.Order` — `java:` is accepted
+for .NET types); a type without name stands for its whole scheme when transformers are matched. `Message.DataType` holds the message's type
+(copied with the message).
+
+- **Registries.** `context.Transformers` (`TransformerRegistry`: `Add(ITransformer)`, `Add(from, to, Action<Message>)`, `Resolve(from, to)`
+  — exact types beat scheme-only ones, a specific source beats any source (`From` null) —, `ResolveChain` for one intermediate type,
+  `ResolveByName`) and `context.Validators` (`ValidatorRegistry`: `Add(IValidator)`, `Add(type, predicate)`, `Resolve(type)` — exact, then
+  scheme). `RouteBuilder.Transformer(...)`/`Validator(...)` add to them inside `Configure()`; YAML top-level `transformers`/`validators`.
+- **Built-ins.** `DataFormatTransformer` (marshals when the target scheme is the data format's, unmarshals otherwise; by name or instance),
+  `EndpointTransformer` (sends a copy `InOut` to a URI and takes the reply), `DelegateTransformer` (lambda); `PredicateValidator`,
+  `EndpointValidator` (invalid when the call fails), `DelegateValidator`. Invalid messages throw `ValidationException`.
+- **Contracts** (`RouteDefinition.InputType`/`OutputType`, `DataTypeContract(type, validate)`; `.InputType("json:Order", validate: true)`,
+  `.InputType(typeof(Order))`, YAML `inputType: { urn, validate }`): `ContractProcessor` wraps the route's steps. On entry, when the message's
+  type differs from the input type, it is transformed as Camel's `ContractAdvice` does: without a source type only .NET conversion is done
+  (`clr:` targets are converted with the type converters); otherwise a matching transformer, else .NET-to-.NET conversion, else a transformer
+  chain; nothing matching fails with "No Transformer found for [from] -> [to]". Then the message's type is set and, with `validate`, the
+  validator of the type runs (none is an error). On exit the same for the output type, unless the exchange failed.
+- **transform with toType** (`.Transform(DataType.Parse("json"), fromType)`, YAML `transform: { toType, fromType }`,
+  `DataTypeTransformProcessor`): the same transformation inside a route.
+
+Differences from Camel: no `loadTransformer` scanning or built-in named data types (`application-cloudevents`, ...); contracts are not applied to
+REST verbs.
 
 ### Global configuration
 
@@ -1060,7 +1179,7 @@ types, data formats and beans are resolved there).
   the template copy as usual; when a typed option uses a parameter, the template's route is read again for each route created (a
   `RouteTemplateContext.Handler` set by the template's configurer), with the parameters substituted.
 - **Top level.** `route` (id, description, group, autoStartup, startupOrder, routeConfigurationId, streamCache, shutdownRoute/RunningTask,
-  errorHandler/errorHandlerRef, properties, from), `from`, `routeTemplate` (parameters, beans, `from` or `route`), `templatedRoute` (parameters,
+  errorHandler/errorHandlerRef, properties, precondition, nodePrefixId, routePolicy, inputType/outputType, from), `from`, `routeTemplate` (parameters, beans, `from` or `route`), `templatedRoute` (parameters,
   beans), `routeConfiguration` (errorHandler, and lists of `onException`, `onCompletion`, `intercept`, `interceptFrom`, `interceptSendToEndpoint`,
   items wrapped as Camel writes them or not), `beans`, `errorHandler` (`deadLetterChannel`, `defaultErrorHandler`, `noErrorHandler`,
   `refErrorHandler`), `intercept`, `interceptFrom`, `interceptSendToEndpoint`, `onException`, `onCompletion`, `rest` and `restConfiguration`
@@ -1097,12 +1216,14 @@ Coverage: every EIP definition of Caravan.Core has a step.
 | `marshal`, `unmarshal` | `{ json: { unmarshalType: ... } }`: built-in data formats with their properties, or any data format known to the context, or `custom: ref` |
 | `doTry` (`doCatch`, `doFinally`), `onException`, `onCompletion`, `throwException` (type + message, or ref), `rollback` (`markRollbackOnly`, `markRollbackOnlyLast`) | |
 | `circuitBreaker` (`onFallback`, `configuration` ref, `resilience4jConfiguration`, `circuitBreakerConfiguration`), `saga` (`compensation`, `completion`, `option`, `timeout`, without steps: the rest of the route) | |
+| `setVariable`, `setVariables`, `removeVariable`, `convertVariableTo`; `variableSend`/`variableReceive` on `to`, `toD`, `enrich`, `pollEnrich`, `poll`, `from` | |
+| `threads` (without steps: the rest of the route; `steps` as a Caravan extension), `poll`, `transform` with `toType`/`fromType` | |
 
-Differences from Camel: unsupported Camel steps fail with a reason (`threads`, `transacted`, `policy`, variables — `setVariable(s)`,
-`removeVariable`, `convertVariableTo`, `variableSend/Receive` —, `serviceCall`, `tokenizer`, `poll`, `whenSkipSendToEndpoint`), as do the
-`camelContext`, top-level `dataFormats`, Kamelet resource files (`apiVersion`/`kind`), route
-`precondition`/`nodePrefixId`/`routePolicy`/`inputType`/`outputType`, `templatedRoute.prefixId`, `transform` data types, bean
-`factoryBean`/`builderClass`/scripts and `...MethodName` aggregation strategies; Camel options without a Caravan equivalent (executor services,
+Differences from Camel: unsupported Camel steps fail with a reason (`transacted`, `policy`, `serviceCall`, `tokenizer`,
+`whenSkipSendToEndpoint`), as do the `camelContext`, top-level `dataFormats`, Kamelet resource files (`apiVersion`/`kind`), `loadTransformer`,
+`threads.executorService`, bean `factoryBean`/`builderClass`/scripts and `...MethodName` aggregation strategies; top-level `transformers`
+(`dataFormatTransformer`, `endpointTransformer`, `customTransformer`) and `validators` (`predicateValidator`, `endpointValidator`,
+`customValidator`) are a Caravan extension using Camel's element names; Camel options without a Caravan equivalent (executor services,
 `allowOptimisedComponents`, `marker`, ...) are accepted and ignored (listed in the schema as such). `resilience4jConfiguration` maps to Polly:
 `failureRateThreshold`/100 → failure ratio, `minimumNumberOfCalls` → minimum throughput, `slidingWindowSize` read as seconds (Polly's window
 is time-based), `waitDurationInOpenState` (s) → break duration, `timeoutEnabled` + `timeoutDuration` (ms), `bulkheadEnabled` +
@@ -1186,7 +1307,7 @@ Register built-in components in the `CaravanContext` static constructor. Backgro
 "Consumers: lifecycle, suspension and shutdown" above.
 
 Built-in components: `direct`, `seda` (and `vm`, its process-wide variant), `timer`, `scheduler`, `log`, `mock`, `saga`, `dataformat`, `bean`,
-`class`, `controlbus`, `stub`, `ref`, `dataset`, `dataset-test`, `browse`, `kamelet`, `file`, `rest` (consumer only, served by an
+`class`, `controlbus`, `stub`, `ref`, `dataset`, `dataset-test`, `browse`, `kamelet`, `file`, `language`, `rest` (consumer only, served by an
 `IRestConsumerFactory`). `platform-http` comes with Caravan.AspNetCore.
 
 ### Consumers: lifecycle, suspension and shutdown
@@ -1246,9 +1367,15 @@ Other conventions:
   `Caravan.LoadBalancing` (built-in load balancers), `Caravan.Idempotent` (idempotent repositories), `Caravan.Saga` (saga SPI and in-memory service),
   `Caravan.DataFormat` (built-in data formats and their registry), `Caravan.Streams` (stream caching),
   `Caravan.Observability` (tracing, metrics, message history, tracers), `Caravan.Management` (management API), `Caravan.Health` (health checks),
+  `Caravan.DataTypes` (data types, transformers, validators), `Caravan.RoutePolicies` (route policy base class and built-ins),
   `Caravan.Components.<Name>`; `Caravan.Testing` (the test kit project), `Caravan.Hosting` (Generic Host), `Caravan.OpenTelemetry`,
   `Caravan.Dsl.Yaml` (YAML DSL; `Caravan.Dsl.Yaml.Catalog` holds the step catalog), `Caravan.Model.Rest` (REST DSL model), `Caravan.Components.Rest`,
   `Caravan.AspNetCore` (ASP.NET Core; `Caravan.AspNetCore.OpenApi`).
 - Tests: xUnit (`tests/Caravan.Core.Tests`, `tests/Caravan.Testing.Tests`, `tests/Caravan.Hosting.Tests`, `tests/Caravan.Dsl.Yaml.Tests`,
-  `tests/Caravan.AspNetCore.Tests` — on `TestServer`, never a real port), one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
+  `tests/Caravan.AspNetCore.Tests` — on `TestServer`, never a real port —, `tests/Caravan.Samples.Tests` — each sample's routes run once), one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
   expectation or `TimeProvider` can be used instead; keep the suite fast.
+- Samples (`samples/`, in the solution, never packed — `samples/Directory.Build.props`): `Caravan.Samples.Orders` (Generic Host, C# routes,
+  error handling), `Caravan.Samples.WebApi` (ASP.NET Core, REST DSL in C# and YAML, health, OpenAPI, OpenTelemetry), `Caravan.Samples.FileBatch`
+  (file polling and the aggregator). They follow the same build rules as `src`. Endpoints a test must replace are property placeholders.
+- Packaging: every `src` project packs (`dotnet pack -c Release`) with the shared metadata of `Directory.Build.props` (version, license,
+  repository, tags, the README) and a symbol package; descriptions are per project.

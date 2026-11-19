@@ -19,6 +19,16 @@ public sealed class RouteConfigurationDefinitionBuilder
     /// <summary>The route configuration.</summary>
     public RouteConfigurationDefinition Definition { get; }
 
+    /// <summary>Adds the configuration only when the Simple predicate <paramref name="precondition"/> is true (Camel's <c>precondition</c>).</summary>
+    /// <param name="precondition">The predicate, typically on properties.</param>
+    /// <returns>This builder.</returns>
+    public RouteConfigurationDefinitionBuilder Precondition(string precondition)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(precondition);
+        Definition.Precondition = precondition;
+        return this;
+    }
+
     /// <summary>Sets the description.</summary>
     /// <param name="description">The description.</param>
     /// <returns>This builder.</returns>

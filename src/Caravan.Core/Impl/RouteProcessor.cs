@@ -59,6 +59,12 @@ internal sealed class RouteProcessor(Route route, IProcessor pipeline) : INaviga
         var inflight = context.InflightRepository;
         route.IncrementInflight(now);
         inflight.Add(exchange, route.Id);
+        var policies = route.RoutePolicies.Count > 0;
+        if (policies)
+        {
+            route.NotifyPolicies((policy, r) => policy.OnExchangeBegin(r, exchange));
+        }
+
         try
         {
             await pipeline.ProcessAsync(exchange).ConfigureAwait(false);
@@ -112,6 +118,11 @@ internal sealed class RouteProcessor(Route route, IProcessor pipeline) : INaviga
                 if (activity is not null)
                 {
                     RouteTelemetry.StopActivity(activity, exchange);
+                }
+
+                if (policies)
+                {
+                    route.NotifyPolicies((policy, r) => policy.OnExchangeDone(r, exchange));
                 }
             }
 

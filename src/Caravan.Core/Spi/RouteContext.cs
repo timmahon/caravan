@@ -136,11 +136,29 @@ public sealed class RouteContext
     public IProcessor CreateBlockProcessor(IEnumerable<ProcessorDefinition> outputs, ProcessorDefinition? parent = null)
     {
         var processors = new List<IProcessor>();
-        foreach (var output in outputs)
+        var list = outputs as IReadOnlyList<ProcessorDefinition> ?? [.. outputs];
+        for (var i = 0; i < list.Count; i++)
         {
+            var output = list[i];
             if (parent is not null)
             {
                 output.Parent = parent;
+            }
+
+            if (output is ThreadsDefinition { Outputs.Count: 0, Disabled: false } threads)
+            {
+                // Chained threads: the rest of the block runs on its workers.
+                foreach (var rest in list.Skip(i + 1))
+                {
+                    if (parent is not null)
+                    {
+                        rest.Parent = parent;
+                    }
+                }
+
+                threads.RestOfBlock = [.. list.Skip(i + 1)];
+                processors.Add(CreateNodeProcessor(threads)!);
+                break;
             }
 
             var processor = CreateNodeProcessor(output);

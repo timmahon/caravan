@@ -203,6 +203,40 @@ internal static class FlowSteps
         },
         new()
         {
+            Name = "threads",
+            Description = "Hands the rest of the route (or, as a Caravan extension, its steps) to a bounded worker pool.",
+            Options =
+            [
+                Opt.Int("poolSize", "The number of workers kept (default 10)."),
+                Opt.Int("maxPoolSize", "The maximum number of workers (default 20)."),
+                Opt.Int("maxQueueSize", "The queue capacity (default 1000; 0 none; -1 unbounded)."),
+                Opt.Enum("rejectedPolicy", "What happens when the pool and queue are full.", "Abort", "CallerRuns"),
+                Opt.Bool("callerRunsWhenRejected", "Camel 3: true means rejectedPolicy CallerRuns, false Abort."),
+                Opt.Str("threadName", "A name for the pool."),
+                Opt.Steps("steps", "Caravan: steps run by the pool (default: the rest of the route)."),
+                Opt.Ignored("keepAliveTime", OptionKind.Integer, "workers are tasks"),
+                Opt.Ignored("timeUnit", OptionKind.String, "workers are tasks"),
+                Opt.Ignored("allowCoreThreadTimeOut", OptionKind.Boolean, "workers are tasks"),
+                Opt.Unsupported("executorService", "configure the pool with its options"),
+            ],
+            Build = o =>
+            {
+                var poolSize = o.Int("poolSize") ?? 10;
+                var definition = new ThreadsDefinition
+                {
+                    PoolSize = poolSize,
+                    MaxPoolSize = o.Int("maxPoolSize") ?? Math.Max(poolSize, 20),
+                    MaxQueueSize = o.Int("maxQueueSize") ?? 1000,
+                    ThreadName = o.String("threadName"),
+                    RejectedPolicy = o.Enum<ThreadPoolRejectedPolicy>("rejectedPolicy")
+                        ?? (o.Bool("callerRunsWhenRejected") is false ? ThreadPoolRejectedPolicy.Abort : ThreadPoolRejectedPolicy.CallerRuns),
+                };
+                o.Steps("steps", definition.Outputs);
+                return definition;
+            },
+        },
+        new()
+        {
             Name = "delay",
             Description = "Delays the exchange by the expression's value (milliseconds or a TimeSpan).",
             Expression = ExpressionSlot.Expression,

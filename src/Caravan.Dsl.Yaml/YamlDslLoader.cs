@@ -60,7 +60,7 @@ internal sealed class YamlDslLoader(YamlRoutesBuilder builder, LoadContext conte
     {
         if (item is not YamlMappingNode { Children.Count: 1 } mapping || mapping.Children.First().Key is not YamlScalarNode { Value: { } raw } key)
         {
-            throw context.Error(item, "Each element must be an object with exactly one key: route, from, routeTemplate, templatedRoute, routeConfiguration, rest, restConfiguration, beans, errorHandler, intercept, interceptFrom, interceptSendToEndpoint, onException or onCompletion");
+            throw context.Error(item, "Each element must be an object with exactly one key: route, from, routeTemplate, templatedRoute, routeConfiguration, rest, restConfiguration, transformers, validators, beans, errorHandler, intercept, interceptFrom, interceptSendToEndpoint, onException or onCompletion");
         }
 
         var name = NameConverter.ToCamelCase(raw);
@@ -104,6 +104,20 @@ internal sealed class YamlDslLoader(YamlRoutesBuilder builder, LoadContext conte
                 break;
             case "restConfiguration":
                 builder.RestConfiguration(c => RestCatalog.FillConfiguration(element.Object("restConfiguration")!, c.Configuration));
+                break;
+            case "transformers":
+                foreach (var item in element.Objects("transformers"))
+                {
+                    builder.Transformer(DataTypeCatalog.BuildTransformer(item));
+                }
+
+                break;
+            case "validators":
+                foreach (var item in element.Objects("validators"))
+                {
+                    builder.Validator(DataTypeCatalog.BuildValidator(item));
+                }
+
                 break;
             case "errorHandler":
                 builder.ErrorHandler(ModelCatalog.BuildErrorHandler(element.Object("errorHandler")!));
@@ -155,6 +169,7 @@ internal sealed class YamlDslLoader(YamlRoutesBuilder builder, LoadContext conte
     {
         var route = create(EndpointUris.Build(from)).Definition;
         route.FromId = from.String("id");
+        route.FromVariableReceive = from.String("variableReceive");
         from.Steps("steps", route.Outputs, route);
         return route;
     }
@@ -171,6 +186,11 @@ internal sealed class YamlDslLoader(YamlRoutesBuilder builder, LoadContext conte
         route.StreamCaching = options.Bool("streamCache");
         route.ShutdownRoute = options.Enum<ShutdownRoute>("shutdownRoute") ?? ShutdownRoute.Default;
         route.ShutdownRunningTask = options.Enum<ShutdownRunningTask>("shutdownRunningTask") ?? ShutdownRunningTask.CompleteCurrentTaskOnly;
+        route.Precondition = options.String("precondition");
+        route.NodePrefixId = options.String("nodePrefixId");
+        route.RoutePolicyRefs = options.String("routePolicy");
+        route.InputType = Contract(options.Object("inputType"));
+        route.OutputType = Contract(options.Object("outputType"));
         if (options.Object("errorHandler") is { } errorHandler)
         {
             route.ErrorHandler = ModelCatalog.BuildErrorHandler(errorHandler);
@@ -259,10 +279,14 @@ internal sealed class YamlDslLoader(YamlRoutesBuilder builder, LoadContext conte
         (copy.Id, copy.FromUri) = (id, fromUri);
     }
 
+    private static Caravan.DataTypes.DataTypeContract? Contract(YamlObject? options) =>
+        options is null ? null : new(Caravan.DataTypes.DataType.Parse(options.RequiredString("urn")), options.Bool("validate") ?? false);
+
     private void LoadTemplatedRoute(YamlObject options)
     {
         var templated = builder.TemplatedRoute(options.RequiredString("routeTemplateRef"));
         templated.RouteId = options.String("routeId");
+        templated.PrefixId = options.String("prefixId");
         foreach (var parameter in options.Objects("parameters"))
         {
             templated.Parameters[parameter.RequiredString("name")] = parameter.String("value");
@@ -285,6 +309,7 @@ internal sealed class YamlDslLoader(YamlRoutesBuilder builder, LoadContext conte
     {
         var configuration = builder.RouteConfiguration(options.String("id"), _ => { });
         configuration.Description = options.String("description");
+        configuration.Precondition = options.String("precondition");
         if (options.Object("errorHandler") is { } errorHandler)
         {
             configuration.ErrorHandler = ModelCatalog.BuildErrorHandler(errorHandler);

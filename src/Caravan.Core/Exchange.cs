@@ -13,6 +13,7 @@ public sealed class Exchange
 {
     private Message _message;
     private List<ISynchronization>? _pendingCompletions;
+    private Dictionary<string, object?>? _variables;
 
     /// <summary>Creates an exchange with a new id and an empty message.</summary>
     public Exchange(ICaravanContext context, ExchangePattern pattern = ExchangePattern.InOnly)
@@ -168,6 +169,68 @@ public sealed class Exchange
         return removed;
     }
 
+    /// <summary>
+    /// The exchange's own variables (Camel 4's exchange variables): data scoped to this exchange, like properties, but meant for user data
+    /// (<c>setVariable</c>, <c>${variable.name}</c>, <c>variableReceive</c>). Copied with the exchange.
+    /// </summary>
+    public IDictionary<string, object?> Variables => _variables ??= new Dictionary<string, object?>(StringComparer.Ordinal);
+
+    /// <summary>Whether the exchange has variables of its own.</summary>
+    public bool HasVariables => _variables is { Count: > 0 };
+
+    /// <summary>
+    /// Gets a variable, or null when it does not exist: an exchange variable (<c>name</c>), a global one (<c>global:name</c>), one of the
+    /// current route (<c>route:name</c>) or of another route (<c>route:routeId:name</c>), or one of a custom repository (<c>id:name</c>).
+    /// </summary>
+    /// <param name="name">The variable name, optionally prefixed by a repository id.</param>
+    /// <returns>The value.</returns>
+    /// <exception cref="ArgumentException">The prefix names no variable repository.</exception>
+    public object? GetVariable(string name) => Support.VariableHelper.Get(Context, this, name);
+
+    /// <summary>Gets a variable converted to <typeparamref name="T"/>, or default when it does not exist (see <see cref="GetVariable(string)"/>).</summary>
+    /// <typeparam name="T">The type to convert to.</typeparam>
+    /// <param name="name">The variable name, optionally prefixed by a repository id.</param>
+    /// <returns>The converted value.</returns>
+    public T? GetVariable<T>(string name) =>
+        GetVariable(name) is { } value ? (T?)Context.TypeConverter.Convert(typeof(T), this, value) : default;
+
+    /// <summary>Sets a variable (see <see cref="GetVariable(string)"/> for the names); a null value removes it, as in Camel.</summary>
+    /// <param name="name">The variable name, optionally prefixed by a repository id.</param>
+    /// <param name="value">The value.</param>
+    public void SetVariable(string name, object? value)
+    {
+        var (repository, key) = Support.VariableHelper.Resolve(Context, this, name);
+        if (repository is not null)
+        {
+            repository.SetVariable(key, value);
+        }
+        else if (value is null)
+        {
+            _variables?.Remove(key);
+        }
+        else
+        {
+            Variables[key] = value;
+        }
+    }
+
+    /// <summary>
+    /// Removes the variables matching <paramref name="pattern"/>: a name, <c>*</c> (all the exchange's variables), a wildcard
+    /// (<c>foo*</c>) or a regular expression, optionally prefixed by a repository id (<c>global:*</c>).
+    /// </summary>
+    /// <param name="pattern">The name or pattern.</param>
+    /// <returns>Whether a variable was removed.</returns>
+    public bool RemoveVariable(string pattern) => Support.VariableHelper.Remove(Context, this, pattern);
+
+    /// <summary>The names of the exchange's own variables.</summary>
+    internal IEnumerable<string> ExchangeVariableNames => _variables?.Keys ?? (IEnumerable<string>)[];
+
+    /// <summary>Gets an exchange variable without prefix handling.</summary>
+    internal object? TryGetExchangeVariable(string name) => _variables is not null && _variables.TryGetValue(name, out var value) ? value : null;
+
+    /// <summary>Removes an exchange variable without prefix handling.</summary>
+    internal void RemoveExchangeVariable(string name) => _variables?.Remove(name);
+
     /// <summary>Gets the exception of type <typeparamref name="T"/> from the exception or its inner exceptions.</summary>
     public T? GetException<T>()
         where T : Exception
@@ -211,6 +274,7 @@ public sealed class Exchange
         };
         copy._message = _message.Copy(copy);
         copy.Properties = new Dictionary<string, object?>(Properties, StringComparer.Ordinal);
+        copy._variables = CopyVariables();
         Observability.MessageHistoryRecorder.CopyInto(copy);
         return copy;
     }
@@ -242,6 +306,7 @@ public sealed class Exchange
 
         _message = source._message.Copy(this);
         Properties = new Dictionary<string, object?>(source.Properties, StringComparer.Ordinal);
+        _variables = source.CopyVariables();
         Exception = source.Exception;
         IsRouteStop = source.IsRouteStop;
         IsRollbackOnly = source.IsRollbackOnly;
@@ -294,9 +359,13 @@ public sealed class Exchange
         };
         copy._message = _message.Copy(copy);
         copy.Properties = new Dictionary<string, object?>(Properties, StringComparer.Ordinal);
+        copy._variables = CopyVariables();
         copy._pendingCompletions = TakePendingCompletions();
         return copy;
     }
+
+    private Dictionary<string, object?>? CopyVariables() =>
+        _variables is { Count: > 0 } variables ? new Dictionary<string, object?>(variables, StringComparer.Ordinal) : null;
 
     /// <inheritdoc />
     public override string ToString() => $"Exchange[{ExchangeId}]";
