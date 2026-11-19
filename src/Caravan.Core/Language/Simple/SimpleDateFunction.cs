@@ -91,7 +91,7 @@ internal static class SimpleDateFunction
             case "file":
                 return e => ToDate(e, e.Message.GetHeader(CaravanHeaders.FileLastModified), function);
             case "messageTimestamp":
-                throw new SimpleParseException($"Command not supported for dateExpression: {command} (no Caravan equivalent)", expression, index);
+                return e => e.Message.MessageTimestamp is > 0 and var millis ? DateTimeOffset.FromUnixTimeMilliseconds(millis) : null;
         }
 
         foreach (var prefix in (string[])["in.header.", "in.headers.", "header.", "headers."])
@@ -107,6 +107,12 @@ internal static class SimpleDateFunction
         {
             var name = command["exchangeProperty.".Length..];
             return e => ToDate(e, e.GetProperty(name), function);
+        }
+
+        if (command.StartsWith("variable.", StringComparison.Ordinal) && command.Length > "variable.".Length)
+        {
+            var name = command["variable.".Length..];
+            return e => ToDate(e, e.GetVariable(name), function);
         }
 
         throw new SimpleParseException($"Command not supported for dateExpression: {command}", expression, index);

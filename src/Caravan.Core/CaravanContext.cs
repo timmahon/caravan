@@ -96,6 +96,9 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         PropertiesComponent = new DefaultPropertiesComponent(PropertiesSources);
         Languages = new LanguageRegistry(this);
         DataFormats = new DataFormatRegistry(this);
+        VariableRepositories = new VariableRepositoryRegistry(this);
+        Transformers = new DataTypes.TransformerRegistry(this);
+        Validators = new DataTypes.ValidatorRegistry(this);
         _management = new DefaultManagementService(this);
         HealthChecks = new Health.HealthCheckRegistry(this);
         if (services?.GetService(typeof(IConfiguration)) is IConfiguration configuration)
@@ -179,6 +182,31 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
     /// <inheritdoc />
     public DataFormatRegistry DataFormats { get; }
+
+    /// <inheritdoc />
+    public VariableRepositoryRegistry VariableRepositories { get; }
+
+    /// <inheritdoc />
+    public IList<IRoutePolicyFactory> RoutePolicyFactories { get; } = new CopyOnWriteList<IRoutePolicyFactory>();
+
+    /// <inheritdoc />
+    public DataTypes.TransformerRegistry Transformers { get; }
+
+    /// <inheritdoc />
+    public DataTypes.ValidatorRegistry Validators { get; }
+
+    /// <inheritdoc />
+    public object? GetVariable(string name) => VariableHelper.Get(this, null, GlobalName(name));
+
+    /// <inheritdoc />
+    public void SetVariable(string name, object? value)
+    {
+        var (repository, key) = VariableHelper.Resolve(this, null, GlobalName(name));
+        repository!.SetVariable(key, value);
+    }
+
+    private static string GlobalName(string name) =>
+        name.Contains(':', StringComparison.Ordinal) ? name : VariableRepositoryRegistry.GlobalId + ":" + name;
 
     /// <inheritdoc />
     public IDataFormat ResolveDataFormat(string name) => DataFormats.Resolve(name);
@@ -459,13 +487,41 @@ public class CaravanContext : ServiceSupport, ICaravanContext
                     continue;
                 }
 
+                if (definition.Precondition is { } precondition && !EvaluatePrecondition(precondition))
+                {
+                    CreateLogger(typeof(CaravanContext).FullName!).LogDebug("Route {RouteId} from {Uri} is skipped: precondition {Precondition} is false", definition.Id, definition.FromUri, precondition);
+                    continue;
+                }
+
                 AssignRouteId(definition);
+                ApplyNodePrefixId(definition);
                 _routeDefinitions.Add(definition);
                 added.Add(definition);
             }
         }
 
         return added;
+    }
+
+    /// <summary>Evaluates a route (configuration) precondition: a Simple predicate, typically on properties, against an empty exchange.</summary>
+    private bool EvaluatePrecondition(string precondition)
+    {
+        var text = PropertiesComponent.ResolvePlaceholders(precondition);
+        return !string.IsNullOrWhiteSpace(text) && Language.SimpleLanguage.Predicate(text).Matches(new Exchange(this));
+    }
+
+    /// <summary>Prefixes the ids of the route's nodes with <see cref="RouteDefinition.NodePrefixId"/>, generating the missing ones.</summary>
+    private void ApplyNodePrefixId(RouteDefinition definition)
+    {
+        if (string.IsNullOrEmpty(definition.NodePrefixId))
+        {
+            return;
+        }
+
+        foreach (var node in definition.AllNodes())
+        {
+            node.Id = node.Id is { } id ? definition.NodePrefixId + id : definition.NodePrefixId + NextNodeId(node.ShortName);
+        }
     }
 
     /// <summary>Whether a route passes <see cref="RouteFilterIncludePattern"/> and <see cref="RouteFilterExcludePattern"/> (by id or endpoint URI).</summary>
@@ -569,6 +625,12 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     public void AddRouteConfiguration(RouteConfigurationDefinition configuration)
     {
         ArgumentNullException.ThrowIfNull(configuration);
+        if (configuration.Precondition is { } precondition && !EvaluatePrecondition(precondition))
+        {
+            CreateLogger(typeof(CaravanContext).FullName!).LogDebug("Route configuration {Id} is skipped: precondition {Precondition} is false", configuration.Id, precondition);
+            return;
+        }
+
         if (!_routeConfigurations.Contains(configuration))
         {
             _routeConfigurations.Add(configuration);
@@ -675,6 +737,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             _routeDefinitions.Remove(route.Definition);
         }
 
+        route.NotifyPolicies(static (policy, r) => policy.OnRemove(r));
         EventHelper.Notify(this, CaravanEventType.RouteRemoved, routeId: routeId);
         return true;
     }
@@ -690,6 +753,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
         await ShutdownStrategy.SuspendAsync(this, [route], cancellationToken: cancellationToken).ConfigureAwait(false);
         await route.SuspendAsync(cancellationToken).ConfigureAwait(false);
+        route.NotifyPolicies(static (policy, r) => policy.OnSuspend(r));
         EventHelper.Notify(this, CaravanEventType.RouteSuspended, routeId: route.Id, endpoint: route.Endpoint);
     }
 
@@ -700,6 +764,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         if (route.Status == ServiceStatus.Suspended)
         {
             await route.ResumeAsync(cancellationToken).ConfigureAwait(false);
+            route.NotifyPolicies(static (policy, r) => policy.OnResume(r));
             EventHelper.Notify(this, CaravanEventType.RouteResumed, routeId: route.Id, endpoint: route.Endpoint);
         }
         else if (route.Status != ServiceStatus.Started)
@@ -726,6 +791,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             throw new FailedToStartRouteException(route.Id, e.Message, e);
         }
 
+        route.NotifyPolicies(static (policy, r) => policy.OnStart(r));
         EventHelper.Notify(this, CaravanEventType.RouteStarted, routeId: route.Id, endpoint: route.Endpoint);
     }
 
@@ -738,6 +804,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         }
 
         await route.StopAsync(cancellationToken).ConfigureAwait(false);
+        route.NotifyPolicies(static (policy, r) => policy.OnStop(r));
         EventHelper.Notify(this, CaravanEventType.RouteStopped, routeId: route.Id, endpoint: route.Endpoint);
     }
 
@@ -829,13 +896,21 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             }
 
             var pipeline = routeContext.CreateBlockProcessor(definition.Outputs);
+            pipeline = ContractProcessor.Wrap(definition, pipeline);
+            pipeline = FromVariableProcessor.Wrap(definition, pipeline);
             pipeline = InterceptFromProcessor.Wrap(routeContext, endpoint, pipeline);
             pipeline = OnCompletionProcessor.Wrap(routeContext, pipeline);
-            var route = new Route(routeContext, endpoint, pipeline) { EndpointUsage = _management.GetUsage(endpoint) };
+            var route = new Route(routeContext, endpoint, pipeline)
+            {
+                EndpointUsage = _management.GetUsage(endpoint),
+                RoutePolicies = ResolveRoutePolicies(definition, routeId),
+            };
             lock (_routesLock)
             {
                 _routes.Add(route);
             }
+
+            route.NotifyPolicies(static (policy, r) => policy.OnInit(r));
 
             EventHelper.Notify(this, CaravanEventType.RouteAdded, routeId: routeId, endpoint: endpoint);
             return route;
@@ -844,6 +919,25 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         {
             throw new FailedToCreateRouteException(routeId, e.Message, e);
         }
+    }
+
+    private List<IRoutePolicy> ResolveRoutePolicies(RouteDefinition definition, string routeId)
+    {
+        var policies = new List<IRoutePolicy>(definition.RoutePolicies);
+        foreach (var name in (definition.RoutePolicyRefs ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+        {
+            policies.Add(Registry.Lookup(name) as IRoutePolicy ?? throw new NoSuchBeanException(name));
+        }
+
+        foreach (var factory in RoutePolicyFactories)
+        {
+            if (factory.CreateRoutePolicy(this, routeId, definition) is { } policy)
+            {
+                policies.Add(policy);
+            }
+        }
+
+        return policies;
     }
 
     private void RegisterInterceptSendToEndpoints(RouteContext routeContext)
@@ -948,7 +1042,13 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
         foreach (var route in ordered)
         {
+            var wasRunning = route.Status is ServiceStatus.Started or ServiceStatus.Suspended;
             await route.StopAsync(cancellationToken).ConfigureAwait(false);
+            if (wasRunning)
+            {
+                route.NotifyPolicies(static (policy, r) => policy.OnStop(r));
+            }
+
             EventHelper.Notify(this, CaravanEventType.RouteStopped, routeId: route.Id, endpoint: route.Endpoint);
         }
 

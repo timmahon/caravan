@@ -59,6 +59,12 @@ public sealed class PollEnrichProcessor : ServiceSupport, IProcessor
     /// <summary>Whether an unresolvable URI is skipped instead of failing the exchange.</summary>
     public bool IgnoreInvalidEndpoint { get; }
 
+    /// <summary>
+    /// The variable receiving the polled message (Camel's <c>variableReceive</c>: body as the variable, headers as <c>name.header.key</c>; null
+    /// when nothing was received); the aggregation strategy is then not used and the message is left unchanged.
+    /// </summary>
+    public string? VariableReceive { get; init; }
+
     /// <summary>Maximum number of cached consumers; negative when caching is disabled.</summary>
     public int CacheSize => _cache.CacheSize;
 
@@ -89,7 +95,19 @@ public sealed class PollEnrichProcessor : ServiceSupport, IProcessor
             return;
         }
 
-        EnrichProcessor.Merge(exchange, received, AggregationStrategy, AggregateOnException);
+        if (VariableReceive is not null && received is not { IsFailed: true })
+        {
+            VariableSendReceive.Store(exchange, VariableReceive, received?.Message);
+            if (received is not null)
+            {
+                ExchangeHelper.HandoverCompletions(received, exchange);
+            }
+        }
+        else
+        {
+            EnrichProcessor.Merge(exchange, received, AggregationStrategy, AggregateOnException);
+        }
+
         exchange.SetProperty(ExchangePropertyKeys.ToEndpoint, endpoint.EndpointUri);
 
         async Task<Exchange?> ReceiveAsync(IPollingConsumer consumer) => Timeout switch

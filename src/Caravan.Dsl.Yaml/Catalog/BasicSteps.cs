@@ -10,8 +10,8 @@ internal static class BasicSteps
     private static readonly OptionSpec Uri = Opt.Str("uri", "The endpoint URI.", required: true);
     private static readonly OptionSpec Parameters = Opt.Map("parameters", "Endpoint options appended to the URI as query parameters.");
     private static readonly OptionSpec Pattern = Opt.Enum("pattern", "The exchange pattern used for the send.", "InOnly", "InOut");
-    private static readonly OptionSpec VariableSend = Opt.Unsupported("variableSend", "variables are not supported");
-    private static readonly OptionSpec VariableReceive = Opt.Unsupported("variableReceive", "variables are not supported");
+    private static readonly OptionSpec VariableSend = Opt.Str("variableSend", "A variable whose value is sent as the body instead of the message body.");
+    private static readonly OptionSpec VariableReceive = Opt.Str("variableReceive", "A variable receiving the reply (body; headers as name.header.key); the message is left unchanged.");
 
     /// <summary>The steps.</summary>
     public static IEnumerable<StepSpec> All =>
@@ -22,7 +22,11 @@ internal static class BasicSteps
             Description = "Sends the exchange to an endpoint.",
             InlineOption = "uri",
             Options = [Uri, Parameters, Pattern, VariableSend, VariableReceive],
-            Build = o => new ToDefinition(EndpointUris.Build(o), o.Enum<ExchangePattern>("pattern")),
+            Build = o => new ToDefinition(EndpointUris.Build(o), o.Enum<ExchangePattern>("pattern"))
+            {
+                VariableSend = o.String("variableSend"),
+                VariableReceive = o.String("variableReceive"),
+            },
         },
         new()
         {
@@ -40,7 +44,12 @@ internal static class BasicSteps
             ],
             Build = o =>
             {
-                var definition = new ToDynamicDefinition(Simple(o, EndpointUris.Build(o))) { Pattern = o.Enum<ExchangePattern>("pattern") };
+                var definition = new ToDynamicDefinition(Simple(o, EndpointUris.Build(o)))
+                {
+                    Pattern = o.Enum<ExchangePattern>("pattern"),
+                    VariableSend = o.String("variableSend"),
+                    VariableReceive = o.String("variableReceive"),
+                };
                 definition.CacheSize = o.Int("cacheSize") ?? definition.CacheSize;
                 definition.IgnoreInvalidEndpoint = o.Bool("ignoreInvalidEndpoint") ?? false;
                 return definition;
@@ -114,14 +123,27 @@ internal static class BasicSteps
         new()
         {
             Name = "transform",
-            Description = "Replaces the body with the value of an expression.",
+            Description = "Replaces the body with the value of an expression, or transforms the message to a data type (toType) with the context's transformers.",
             Expression = ExpressionSlot.Expression,
+            ExpressionRequired = false,
             Options =
             [
-                Opt.Unsupported("fromType", "data type transformers are not supported"),
-                Opt.Unsupported("toType", "data type transformers are not supported"),
+                Opt.Str("fromType", "The current data type (scheme:name); default: the message's."),
+                Opt.Str("toType", "The data type to transform to (scheme:name), instead of an expression."),
             ],
-            Build = o => new TransformDefinition(o.InlineExpression()),
+            Build = o =>
+            {
+                var expression = o.OptionalInlineExpression();
+                var toType = o.String("toType");
+                return (expression, toType) switch
+                {
+                    ({ } e, null) when !o.Has("fromType") => new TransformDefinition(e),
+                    (null, { } type) => new TransformDefinition(
+                        Caravan.DataTypes.DataType.Parse(type),
+                        o.String("fromType") is { } from ? Caravan.DataTypes.DataType.Parse(from) : null),
+                    _ => throw o.Context.Error(o.Node, "transform needs either an expression or toType (with an optional fromType)"),
+                };
+            },
         },
         new()
         {
@@ -161,6 +183,63 @@ internal static class BasicSteps
             Expression = ExpressionSlot.Expression,
             Options = [Opt.Str("name", "The property name.", required: true)],
             Build = o => new SetPropertyDefinition(o.RequiredString("name"), o.InlineExpression()),
+        },
+        new()
+        {
+            Name = "setVariable",
+            Description = "Sets a variable (exchange; global:name; route:name) to the value of an expression.",
+            Expression = ExpressionSlot.Expression,
+            Options = [Opt.Str("name", "The variable name.", required: true)],
+            Build = o => new SetVariableDefinition(o.RequiredString("name"), o.InlineExpression()),
+        },
+        new()
+        {
+            Name = "setVariables",
+            Description = "Sets several variables, in order.",
+            Options =
+            [
+                Opt.Objects(
+                    "variables",
+                    "The variables: a name and an expression each.",
+                    new ObjectSpec { Expression = ExpressionSlot.Expression, Options = [Opt.Str("name", "The variable name.", required: true)] },
+                    required: true),
+            ],
+            Build = o =>
+            {
+                var definition = new SetVariablesDefinition();
+                foreach (var variable in o.Objects("variables"))
+                {
+                    definition.Variables.Add(new(variable.RequiredString("name"), variable.InlineExpression()));
+                }
+
+                return definition;
+            },
+        },
+        new()
+        {
+            Name = "removeVariable",
+            Description = "Removes the variables matching a name or pattern (*, wildcard, regular expression; global:* for global ones).",
+            InlineOption = "name",
+            Options = [Opt.Str("name", "The variable name or pattern.", required: true)],
+            Build = o => new RemoveVariableDefinition(o.RequiredString("name")),
+        },
+        new()
+        {
+            Name = "convertVariableTo",
+            Description = "Converts a variable to a type.",
+            Options =
+            [
+                Opt.Str("name", "The variable name.", required: true),
+                Opt.Type("type", "The target type.", required: true),
+                Opt.Str("toName", "The variable receiving the result (default: name)."),
+                Opt.Bool("mandatory", "Whether a failed conversion fails the exchange (default true)."),
+                Opt.Ignored("charset", OptionKind.String, "strings are converted with UTF-8"),
+            ],
+            Build = o => new ConvertVariableDefinition(o.RequiredString("name"), o.Type("type")!)
+            {
+                ToName = o.String("toName"),
+                Mandatory = o.Bool("mandatory") ?? true,
+            },
         },
         new()
         {

@@ -36,6 +36,11 @@ public static class Lang
     /// <summary>The exchange property <paramref name="name"/> (Camel's <c>exchangeProperty(...)</c>).</summary>
     public static IExpression ExchangeProperty(string name) => Expr.Property(name);
 
+    /// <summary>The variable <paramref name="name"/> (the <c>variable</c> language).</summary>
+    /// <param name="name">The variable name, optionally prefixed by a repository id.</param>
+    /// <returns>The expression.</returns>
+    public static IExpression Variable(string name) => Expr.Variable(name);
+
     /// <summary>The body tokenized on <paramref name="token"/> (Camel's <c>tokenize(...)</c>), e.g. for <c>split</c>.</summary>
     public static IExpression Tokenize(string token) => Expr.Tokenize(token);
 

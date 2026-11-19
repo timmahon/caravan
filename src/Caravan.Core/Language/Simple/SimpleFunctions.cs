@@ -153,6 +153,36 @@ internal static class SimpleFunctions
                 return new DelegateNode(GetException, f);
             case "exception.stacktrace" or "exception.stackTrace":
                 return new DelegateNode(e => GetException(e)?.ToString(), f);
+            case "messageTimestamp":
+                return new DelegateNode(e => e.Message.MessageTimestamp, f);
+            case "variables":
+                return new DelegateNode(e => e.Variables, f);
+        }
+
+        if (f.StartsWith("variables", StringComparison.Ordinal) && OgnlPath.StartsStep(f[9..]))
+        {
+            var steps = OgnlPath.Parse(f[9..], index + 9, expression);
+            return new DelegateNode(e => OgnlPath.Evaluate(e.Variables, steps, e, f), f);
+        }
+
+        if (TryCall(f, "variableAs", out var variableArgs, out var variableRest))
+        {
+            if (variableArgs.Count != 2)
+            {
+                throw new SimpleParseException($"Valid syntax: ${{variableAs(key,type)}} was: {f}", expression, index);
+            }
+
+            var key = SimpleParser.Unquote(variableArgs[0]);
+            var type = ResolveType(variableArgs[1], f, index, expression);
+            var steps = ParseRest(variableRest, f, index, expression);
+            return new DelegateNode(
+                e => OgnlPath.Evaluate(e.GetVariable(key) is { } v ? e.Context.TypeConverter.Convert(type.Value, e, v) : null, steps, e, f),
+                f);
+        }
+
+        if (f.StartsWith("variable", StringComparison.Ordinal) && f.Length > 8 && f[8] is '.' or ':' or '[')
+        {
+            return CreateKeyed(f, f[8..], "variable", index, index + 8, expression, (e, k) => e.GetVariable(k), (e, k, v) => e.SetVariable(k, v));
         }
 
         if (f.StartsWith("exchange", StringComparison.Ordinal) && OgnlPath.StartsStep(f[8..]))

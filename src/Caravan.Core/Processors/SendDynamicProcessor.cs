@@ -39,6 +39,12 @@ public sealed class SendDynamicProcessor : ServiceSupport, Spi.IProcessor
     /// <summary>Whether an unresolvable URI is skipped instead of failing the exchange.</summary>
     public bool IgnoreInvalidEndpoint { get; }
 
+    /// <summary>The variable whose value is sent as the body (Camel's <c>variableSend</c>); null sends the message body.</summary>
+    public string? VariableSend { get; init; }
+
+    /// <summary>The variable receiving the reply (Camel's <c>variableReceive</c>); the message is then left unchanged.</summary>
+    public string? VariableReceive { get; init; }
+
     /// <summary>The number of senders currently cached.</summary>
     public int CachedCount => _cache.Count;
 
@@ -58,7 +64,25 @@ public sealed class SendDynamicProcessor : ServiceSupport, Spi.IProcessor
             return;
         }
 
-        await _cache.SendAsync(endpoint, exchange).ConfigureAwait(false);
+        var variables = VariableSendReceive.Before(exchange, VariableSend, VariableReceive);
+        if (variables is null)
+        {
+            await _cache.SendAsync(endpoint, exchange).ConfigureAwait(false);
+            return;
+        }
+
+        var inOut = (Pattern ?? exchange.Pattern) == ExchangePattern.InOut;
+        try
+        {
+            await _cache.SendAsync(endpoint, exchange).ConfigureAwait(false);
+        }
+        catch
+        {
+            variables.Restore(exchange.Message);
+            throw;
+        }
+
+        variables.After(exchange, VariableReceive, inOut);
     }
 
     /// <summary>Stops and removes all cached senders.</summary>

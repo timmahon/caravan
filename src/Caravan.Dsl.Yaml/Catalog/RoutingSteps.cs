@@ -219,13 +219,15 @@ internal static class RoutingSteps
                 Opt.Ignored("autoStartComponents", OptionKind.Boolean, "components start on use"),
                 Opt.Unsupported("aggregationStrategyMethodName", "use a strategy implementing IAggregationStrategy"),
                 Opt.Unsupported("aggregationStrategyMethodAllowNull", "use a strategy implementing IAggregationStrategy"),
-                Opt.Unsupported("variableSend", "variables are not supported"),
-                Opt.Unsupported("variableReceive", "variables are not supported"),
+                Opt.Str("variableSend", "A variable whose value is sent as the resource's body."),
+                Opt.Str("variableReceive", "A variable receiving the reply instead of the strategy merging it."),
             ],
             Build = o =>
             {
                 var enrich = new EnrichDefinition(ResourceUri(o))
                 {
+                    VariableSend = o.String("variableSend"),
+                    VariableReceive = o.String("variableReceive"),
                     AggregationStrategyRef = o.String("aggregationStrategy"),
                     AggregateOnException = o.Bool("aggregateOnException") ?? false,
                     ShareUnitOfWork = o.Bool("shareUnitOfWork") ?? false,
@@ -252,13 +254,14 @@ internal static class RoutingSteps
                 Opt.Ignored("autoStartComponents", OptionKind.Boolean, "components start on use"),
                 Opt.Unsupported("aggregationStrategyMethodName", "use a strategy implementing IAggregationStrategy"),
                 Opt.Unsupported("aggregationStrategyMethodAllowNull", "use a strategy implementing IAggregationStrategy"),
-                Opt.Unsupported("variableReceive", "variables are not supported"),
+                Opt.Str("variableReceive", "A variable receiving the polled message instead of the strategy merging it."),
             ],
             Build = o =>
             {
                 var timeout = o.Duration("timeout");
                 var enrich = new PollEnrichDefinition(ResourceUri(o))
                 {
+                    VariableReceive = o.String("variableReceive"),
                     Timeout = timeout is { } t && t < TimeSpan.Zero ? null : timeout,
                     AggregationStrategyRef = o.String("aggregationStrategy"),
                     AggregateOnException = o.Bool("aggregateOnException") ?? false,
@@ -266,6 +269,26 @@ internal static class RoutingSteps
                 };
                 enrich.CacheSize = o.Int("cacheSize") ?? enrich.CacheSize;
                 return enrich;
+            },
+        },
+        new()
+        {
+            Name = "poll",
+            Description = "Polls a message from an endpoint (uri, Simple) into the exchange; the body is null when nothing arrives in time.",
+            InlineOption = "uri",
+            Options =
+            [
+                Opt.Str("uri", "The endpoint URI (Simple).", required: true),
+                Opt.Map("parameters", "Endpoint options appended to the URI as query parameters."),
+                Opt.Duration("timeout", "How long to wait (default 20 s; negative: forever; 0: do not wait)."),
+                Opt.Str("variableReceive", "A variable receiving the message instead of the exchange."),
+                Opt.Ignored("autoStartComponents", OptionKind.Boolean, "components start on use"),
+            ],
+            Build = o =>
+            {
+                var poll = new PollDefinition(BasicSteps.Simple(o, EndpointUris.Build(o))) { VariableReceive = o.String("variableReceive") };
+                poll.Timeout = o.Duration("timeout") ?? poll.Timeout;
+                return poll;
             },
         },
         new()

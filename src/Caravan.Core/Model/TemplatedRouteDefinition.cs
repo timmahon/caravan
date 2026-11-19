@@ -32,10 +32,23 @@ public sealed class TemplatedRouteDefinition
     /// <summary>Changes the route's copy of the template's route before it is added.</summary>
     public Action<RouteDefinition>? Handler { get; set; }
 
+    /// <summary>A prefix added to the ids of the route's nodes (Camel's <c>prefixId</c>, see <see cref="RouteDefinition.NodePrefixId"/>).</summary>
+    public string? PrefixId { get; set; }
+
     /// <summary>The template context of the route: its parameters, configurer, handler and beans (created later, per route).</summary>
     internal RouteTemplateContext CreateTemplateContext(ICaravanContext context)
     {
-        var templateContext = new RouteTemplateContext(context) { Configurer = Configurer, Handler = Handler };
+        var handler = Handler;
+        if (PrefixId is { } prefix)
+        {
+            handler = route =>
+            {
+                route.NodePrefixId = prefix;
+                Handler?.Invoke(route);
+            };
+        }
+
+        var templateContext = new RouteTemplateContext(context) { Configurer = Configurer, Handler = handler };
         foreach (var (name, value) in Parameters)
         {
             templateContext.SetParameter(name, value);

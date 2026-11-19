@@ -33,5 +33,12 @@ public sealed class RouteConfigurationDefinition
     public List<InterceptSendToEndpointDefinition> InterceptSendToEndpoints { get; } = [];
 
     /// <inheritdoc />
+    /// <summary>
+    /// A Simple predicate deciding whether the configuration is added at all (Camel's route configuration <c>precondition</c>), evaluated once
+    /// when it is added to the context. Null always adds it.
+    /// </summary>
+    public string? Precondition { get; set; }
+
+    /// <inheritdoc />
     public override string ToString() => $"RouteConfiguration({Id ?? "<default>"})";
 }

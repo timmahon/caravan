@@ -58,8 +58,12 @@ public class ErrorMessageTests : YamlTestBase
     [InlineData("- from: { uri: direct:a, steps: [ { filter: { simple: '${body', steps: [] } } ] }", "Invalid simple expression")]
     [InlineData("- from: { uri: direct:a, steps: [ { setBody: { groovy: x } } ] }", "Unknown option 'groovy' in 'setBody'")]
     [InlineData("- from: { uri: direct:a, steps: [ { convertBodyTo: No.Such.Type } ] }", "Cannot resolve type 'No.Such.Type'")]
-    [InlineData("- from: { uri: direct:a, steps: [ { threads: { poolSize: 2 } } ] }", "Step 'threads' is not supported by Caravan")]
-    [InlineData("- from: { uri: direct:a, steps: [ { toD: { uri: x, variableSend: v } } ] }", "Option 'variableSend' of 'toD' is not supported by Caravan: variables are not supported")]
+    [InlineData("- from: { uri: direct:a, steps: [ { transacted: {} } ] }", "Step 'transacted' is not supported by Caravan")]
+    [InlineData("- from: { uri: direct:a, steps: [ { threads: { executorService: x } } ] }", "Option 'executorService' of 'threads' is not supported by Caravan")]
+    [InlineData("- from: { uri: direct:a, steps: [ { transform: { toType: json, constant: x } } ] }", "transform needs either an expression or toType")]
+    [InlineData("- transformers: [ { endpointTransformer: { uri: direct:x } } ]", "'endpointTransformer' needs toType or name")]
+    [InlineData("- transformers: [ { endpointTransformer: { uri: direct:x, toType: a }, customTransformer: { ref: x, toType: b } } ]", "Each item needs exactly one of")]
+    [InlineData("- route: { inputType: { validate: true }, from: { uri: direct:a } }", "Missing required option 'urn' in 'inputType'")]
     [InlineData("- from: { uri: direct:a, steps: [ { to: x, log: y } ] }", "A step must be an object with exactly one key")]
     [InlineData("- from: { uri: direct:a, steps: { to: x } }", "'steps' must be a list of steps")]
     [InlineData("- camelContext: { }", "'camelContext' is not supported by Caravan")]
@@ -130,7 +134,7 @@ public class ErrorMessageTests : YamlTestBase
         try
         {
             var error = Assert.Throws<YamlRouteDefinitionException>(() => Context.AddRoutes(YamlRoutesBuilder.FromFile(path)));
-            Assert.Equal($"{path}:3:5: Unknown option 'stepz' in 'from'. Did you mean 'steps'? Valid options: uri, parameters, id, description, steps", error.Message);
+            Assert.Equal($"{path}:3:5: Unknown option 'stepz' in 'from'. Did you mean 'steps'? Valid options: uri, parameters, id, description, steps, variableReceive", error.Message);
         }
         finally
         {

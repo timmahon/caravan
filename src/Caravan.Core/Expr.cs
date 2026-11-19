@@ -18,6 +18,9 @@ public static class Expr
     /// <summary>The exchange property <paramref name="name"/> (<c>${exchangeProperty.name}</c>).</summary>
     public static IExpression Property(string name) => new FuncExpression(e => e.GetProperty(name), $"${{exchangeProperty.{name}}}");
 
+    /// <summary>The variable <paramref name="name"/> (<c>${variable.name}</c>; <c>global:name</c>, <c>route:name</c> for other repositories).</summary>
+    public static IExpression Variable(string name) => new FuncExpression(e => e.GetVariable(name), $"${{variable.{name}}}");
+
     /// <summary>A constant value.</summary>
     public static IExpression Constant(object? value) => new FuncExpression(_ => value, value?.ToString() ?? "null");
 

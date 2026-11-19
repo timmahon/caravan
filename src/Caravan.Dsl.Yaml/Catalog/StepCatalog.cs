@@ -14,16 +14,10 @@ internal static class StepCatalog
     /// <summary>Camel steps Caravan does not support, with the reason.</summary>
     public static readonly IReadOnlyDictionary<string, string> Unsupported = new Dictionary<string, string>(StringComparer.Ordinal)
     {
-        ["threads"] = "there are no thread pools; use seda or parallelProcessing",
         ["transacted"] = "transactions are not supported",
-        ["policy"] = "route policies are not supported",
-        ["setVariable"] = "variables are not supported",
-        ["setVariables"] = "variables are not supported",
-        ["removeVariable"] = "variables are not supported",
-        ["convertVariableTo"] = "variables are not supported",
+        ["policy"] = "use route policies (routePolicy on the route); the policy EIP (transactions, security) is not supported",
         ["serviceCall"] = "removed from Camel 4",
         ["tokenizer"] = "the LangChain tokenizer is not supported",
-        ["poll"] = "use pollEnrich",
         ["onFallback"] = "onFallback belongs inside circuitBreaker",
         ["intercept"] = "intercept goes at the top level of the file or in a routeConfiguration",
         ["interceptFrom"] = "interceptFrom goes at the top level of the file or in a routeConfiguration",

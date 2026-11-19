@@ -82,6 +82,22 @@ public static class CoreDsl
     public static T SetBody<T, TIn>(this T steps, Func<TIn, object?> expression)
         where T : RouteSteps => steps.SetBody(new FuncExpression(e => expression(e.Message.GetBody<TIn>()!)));
 
+    /// <summary>
+    /// Transforms the message to the data type <paramref name="toType"/> with the context's transformers (Camel 4's <c>transform</c> with
+    /// <c>toType</c>): <c>.Transform(DataType.Parse("json:Order"))</c>.
+    /// </summary>
+    /// <param name="steps">The block to add to.</param>
+    /// <param name="toType">The requested data type.</param>
+    /// <param name="fromType">The current data type (null: the message's <see cref="Message.DataType"/>).</param>
+    /// <returns>The block.</returns>
+    public static T Transform<T>(this T steps, DataTypes.DataType toType, DataTypes.DataType? fromType = null)
+        where T : RouteSteps
+    {
+        ArgumentNullException.ThrowIfNull(toType);
+        steps.AddStep(new TransformDefinition(toType, fromType));
+        return steps;
+    }
+
     /// <summary>Transforms the body into the value of <paramref name="expression"/>.</summary>
     public static T Transform<T>(this T steps, IExpression expression)
         where T : RouteSteps

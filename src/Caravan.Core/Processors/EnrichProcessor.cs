@@ -59,6 +59,15 @@ public sealed class EnrichProcessor : ServiceSupport, IProcessor
     /// <summary>Whether an unresolvable URI is skipped instead of failing the exchange.</summary>
     public bool IgnoreInvalidEndpoint { get; }
 
+    /// <summary>The variable whose value is sent as the resource's body (Camel's <c>variableSend</c>).</summary>
+    public string? VariableSend { get; init; }
+
+    /// <summary>
+    /// The variable receiving the reply (Camel's <c>variableReceive</c>: body as the variable, headers as <c>name.header.key</c>); the aggregation
+    /// strategy is then not used and the message is left unchanged.
+    /// </summary>
+    public string? VariableReceive { get; init; }
+
     /// <summary>Maximum number of cached producers; negative when caching is disabled.</summary>
     public int CacheSize => _cache.CacheSize;
 
@@ -80,6 +89,11 @@ public sealed class EnrichProcessor : ServiceSupport, IProcessor
 
         var resource = exchange.CreateCorrelatedCopy();
         resource.Pattern = ExchangePattern.InOut;
+        if (VariableSend is not null)
+        {
+            resource.Message.Body = exchange.GetVariable(VariableSend);
+        }
+
         if (ShareUnitOfWork)
         {
             resource.UnitOfWork = exchange.UnitOfWork;
@@ -99,7 +113,16 @@ public sealed class EnrichProcessor : ServiceSupport, IProcessor
             resource.UnitOfWork = null;
         }
 
-        Merge(exchange, resource, AggregationStrategy, AggregateOnException);
+        if (VariableReceive is not null && !resource.IsFailed)
+        {
+            VariableSendReceive.Store(exchange, VariableReceive, resource.Message);
+            ExchangeHelper.HandoverCompletions(resource, exchange);
+        }
+        else
+        {
+            Merge(exchange, resource, AggregationStrategy, AggregateOnException);
+        }
+
         exchange.SetProperty(ExchangePropertyKeys.ToEndpoint, endpoint.EndpointUri);
     }
 

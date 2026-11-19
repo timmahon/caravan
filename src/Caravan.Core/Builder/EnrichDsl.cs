@@ -22,6 +22,8 @@ public static class EnrichDsl
     /// <param name="shareUnitOfWork">The resource exchange shares the exchange's unit of work.</param>
     /// <param name="ignoreInvalidEndpoint">Skip, instead of failing, when the URI cannot be resolved.</param>
     /// <param name="cacheSize">Maximum cached producers (default 1000; negative disables caching).</param>
+    /// <param name="variableSend">The variable sent as the resource's body (Camel's <c>variableSend</c>).</param>
+    /// <param name="variableReceive">The variable receiving the reply instead of the strategy merging it (Camel's <c>variableReceive</c>).</param>
     public static T Enrich<T>(
         this T steps,
         string uri,
@@ -30,9 +32,11 @@ public static class EnrichDsl
         bool aggregateOnException = false,
         bool shareUnitOfWork = false,
         bool ignoreInvalidEndpoint = false,
-        int cacheSize = ProducerCache.DefaultCacheSize)
+        int cacheSize = ProducerCache.DefaultCacheSize,
+        string? variableSend = null,
+        string? variableReceive = null)
         where T : RouteSteps =>
-        steps.Enrich(SimpleLanguage.Expression(uri), aggregationStrategy, aggregationStrategyRef, aggregateOnException, shareUnitOfWork, ignoreInvalidEndpoint, cacheSize);
+        steps.Enrich(SimpleLanguage.Expression(uri), aggregationStrategy, aggregationStrategyRef, aggregateOnException, shareUnitOfWork, ignoreInvalidEndpoint, cacheSize, variableSend, variableReceive);
 
     /// <summary>Sends a copy of the exchange to the resource computed by <paramref name="uri"/> (request/reply) and merges the reply into the exchange.</summary>
     /// <param name="steps">The block to add to.</param>
@@ -43,6 +47,8 @@ public static class EnrichDsl
     /// <param name="shareUnitOfWork">The resource exchange shares the exchange's unit of work.</param>
     /// <param name="ignoreInvalidEndpoint">Skip, instead of failing, when the URI cannot be resolved.</param>
     /// <param name="cacheSize">Maximum cached producers (default 1000; negative disables caching).</param>
+    /// <param name="variableSend">The variable sent as the resource's body (Camel's <c>variableSend</c>).</param>
+    /// <param name="variableReceive">The variable receiving the reply instead of the strategy merging it (Camel's <c>variableReceive</c>).</param>
     public static T Enrich<T>(
         this T steps,
         IExpression uri,
@@ -51,7 +57,9 @@ public static class EnrichDsl
         bool aggregateOnException = false,
         bool shareUnitOfWork = false,
         bool ignoreInvalidEndpoint = false,
-        int cacheSize = ProducerCache.DefaultCacheSize)
+        int cacheSize = ProducerCache.DefaultCacheSize,
+        string? variableSend = null,
+        string? variableReceive = null)
         where T : RouteSteps
     {
         steps.AddStep(new EnrichDefinition(uri)
@@ -62,6 +70,8 @@ public static class EnrichDsl
             ShareUnitOfWork = shareUnitOfWork,
             IgnoreInvalidEndpoint = ignoreInvalidEndpoint,
             CacheSize = cacheSize,
+            VariableSend = variableSend,
+            VariableReceive = variableReceive,
         });
         return steps;
     }
@@ -79,6 +89,7 @@ public static class EnrichDsl
     /// <param name="aggregateOnException">Give a failed received exchange to the strategy instead of failing the exchange.</param>
     /// <param name="ignoreInvalidEndpoint">Skip, instead of failing, when the URI cannot be resolved.</param>
     /// <param name="cacheSize">Maximum cached polling consumers (default 1000; negative disables caching).</param>
+    /// <param name="variableReceive">The variable receiving the polled message instead of the strategy merging it (Camel's <c>variableReceive</c>).</param>
     public static T PollEnrich<T>(
         this T steps,
         string uri,
@@ -87,9 +98,10 @@ public static class EnrichDsl
         string? aggregationStrategyRef = null,
         bool aggregateOnException = false,
         bool ignoreInvalidEndpoint = false,
-        int cacheSize = ConsumerCache.DefaultCacheSize)
+        int cacheSize = ConsumerCache.DefaultCacheSize,
+        string? variableReceive = null)
         where T : RouteSteps =>
-        steps.PollEnrich(SimpleLanguage.Expression(uri), timeout, aggregationStrategy, aggregationStrategyRef, aggregateOnException, ignoreInvalidEndpoint, cacheSize);
+        steps.PollEnrich(SimpleLanguage.Expression(uri), timeout, aggregationStrategy, aggregationStrategyRef, aggregateOnException, ignoreInvalidEndpoint, cacheSize, variableReceive);
 
     /// <summary>Receives a message from the resource computed by <paramref name="uri"/> with a polling consumer and merges it into the exchange.</summary>
     /// <param name="steps">The block to add to.</param>
@@ -100,6 +112,7 @@ public static class EnrichDsl
     /// <param name="aggregateOnException">Give a failed received exchange to the strategy instead of failing the exchange.</param>
     /// <param name="ignoreInvalidEndpoint">Skip, instead of failing, when the URI cannot be resolved.</param>
     /// <param name="cacheSize">Maximum cached polling consumers (default 1000; negative disables caching).</param>
+    /// <param name="variableReceive">The variable receiving the polled message instead of the strategy merging it (Camel's <c>variableReceive</c>).</param>
     public static T PollEnrich<T>(
         this T steps,
         IExpression uri,
@@ -108,7 +121,8 @@ public static class EnrichDsl
         string? aggregationStrategyRef = null,
         bool aggregateOnException = false,
         bool ignoreInvalidEndpoint = false,
-        int cacheSize = ConsumerCache.DefaultCacheSize)
+        int cacheSize = ConsumerCache.DefaultCacheSize,
+        string? variableReceive = null)
         where T : RouteSteps
     {
         steps.AddStep(new PollEnrichDefinition(uri)
@@ -119,6 +133,7 @@ public static class EnrichDsl
             AggregateOnException = aggregateOnException,
             IgnoreInvalidEndpoint = ignoreInvalidEndpoint,
             CacheSize = cacheSize,
+            VariableReceive = variableReceive,
         });
         return steps;
     }

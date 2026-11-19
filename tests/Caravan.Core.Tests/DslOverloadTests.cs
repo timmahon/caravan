@@ -371,4 +371,32 @@ public class DslOverloadTests : ContextTestBase
         Assert.Equal(3, builder.RouteConfigurationDefinitions.Count);
         Assert.Equal(2, builder.RouteConfigurationDefinitions[2].InterceptFroms.Count);
     }
+
+    [Fact]
+    public void Variable_threads_poll_and_data_type_overloads_bind_to_a_single_overload()
+    {
+        var route = RouteBuilder.Create(b => b.From("direct:start")
+            .SetVariable("v", _ => 1)
+            .SetVariable("v", _ => throw new InvalidOperationException())
+            .SetVariable("v", (string s) => s.Length)
+            .SetVariable("v", Expr.Body())
+            .SetVariables(("a", Expr.Constant(1)), ("b", Expr.Body()))
+            .SetVariables(new Dictionary<string, object?> { ["c"] = 1 })
+            .ConvertVariableTo("v", typeof(int))
+            .RemoveVariable("v")
+            .ToV("mock:a", "v", null)
+            .ToD("mock:${body}", variableReceive: "r")
+            .Enrich("direct:x", variableSend: "v")
+            .PollEnrich("seda:x", variableReceive: "p")
+            .Poll("seda:x")
+            .Poll("seda:x", TimeSpan.Zero, "v")
+            .Transform(DataTypes.DataType.Parse("json"))
+            .Transform(_ => 1)
+            .Threads(t => t.To("mock:b"), poolSize: 1)
+            .Threads(poolSize: 2)
+            .To("mock:c"))
+            .Build(Context).Single();
+
+        Assert.Equal(19, route.Outputs.Count);
+    }
 }

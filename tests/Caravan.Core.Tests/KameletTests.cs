@@ -143,11 +143,66 @@ public class KameletTests : ContextTestBase
         Assert.Throws<ResolveEndpointFailedException>(() => Context.GetEndpoint("kamelet:source"));
         Assert.Throws<NotSupportedException>(() => Context.GetEndpoint("kamelet:source?routeId=r").CreateProducer());
         Assert.Throws<NotSupportedException>(() => Context.GetEndpoint("kamelet:sink").CreateConsumer(new Spi.DelegateProcessor(_ => ValueTask.CompletedTask)));
-        Assert.Throws<NotSupportedException>(() => Context.GetEndpoint("kamelet:t?x=1").CreateConsumer(new Spi.DelegateProcessor(_ => ValueTask.CompletedTask)));
         var endpoint = Context.GetEndpoint<KameletEndpoint>("kamelet:t/r?x=1&y=2");
         Assert.Equal("t", endpoint.TemplateId);
         Assert.Equal("r", endpoint.RouteId);
         Assert.Equal("1", endpoint.Parameters["x"]);
+    }
+
+    [Fact]
+    public async Task A_route_can_consume_from_a_kamelet()
+    {
+        await StartWithRoutes(b =>
+        {
+            b.RouteTemplate("ticks")
+                .TemplateParameter("queue")
+                .TemplateParameter("prefix", "tick")
+                .From("seda:{{queue}}")
+                .SetBody(Simple("{{prefix}}-${body}"))
+                .To("kamelet:sink");
+            b.From("kamelet:ticks?queue=q1").RouteId("consumer").To("mock:result");
+        });
+        Mock("result").ExpectedBodiesReceived("tick-1", "tick-2");
+
+        await Template.SendBodyAsync("seda:q1", "1");
+        await Template.SendBodyAsync("seda:q1", "2");
+
+        await Mock("result").AssertIsSatisfiedAsync();
+        var kamelet = Assert.Single(Context.RouteDefinitions, r => r.TemplateId == "ticks");
+        Assert.Contains(kamelet.AllNodes().OfType<Model.ToDefinition>(), t => t.Uri == $"kamelet:sink?routeId={kamelet.Id}");
+    }
+
+    [Fact]
+    public async Task Stopping_the_consuming_route_stops_the_kamelet_route_and_starting_it_restarts_it()
+    {
+        await StartWithRoutes(b =>
+        {
+            b.RouteTemplate("src").TemplateParameter("queue").From("seda:{{queue}}").To("kamelet:sink");
+            b.From("kamelet:src/srcRoute?queue=q2").RouteId("consumer").To("mock:result");
+        });
+        Assert.Equal(Spi.ServiceStatus.Started, Context.GetRouteStatus("srcRoute"));
+
+        await Context.StopRouteAsync("consumer");
+        Assert.Equal(Spi.ServiceStatus.Stopped, Context.GetRouteStatus("srcRoute"));
+
+        await Context.StartRouteAsync("consumer");
+        Assert.Equal(Spi.ServiceStatus.Started, Context.GetRouteStatus("srcRoute"));
+        Mock("result").ExpectedBodiesReceived("x");
+        await Template.SendBodyAsync("seda:q2", "x");
+        await Mock("result").AssertIsSatisfiedAsync();
+    }
+
+    [Fact]
+    public async Task A_kamelet_consuming_from_kamelet_source_cannot_be_consumed()
+    {
+        Context.AddRoutes(RouteBuilder.Create(b =>
+        {
+            Kamelets(b);
+            b.From("kamelet:prefix?prefix=A").To("mock:result");
+        }));
+
+        var e = await Assert.ThrowsAnyAsync<Exception>(() => Context.StartAsync());
+        Assert.Contains("must not consume from kamelet:source", e.ToString());
     }
 
     public sealed class Calls

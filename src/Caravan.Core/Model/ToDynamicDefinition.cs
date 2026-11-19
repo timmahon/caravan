@@ -18,6 +18,15 @@ public sealed class ToDynamicDefinition(IExpression uri) : ProcessorDefinition
     /// <summary>Whether an unresolvable URI is skipped instead of failing the exchange.</summary>
     public bool IgnoreInvalidEndpoint { get; set; }
 
+    /// <summary>The variable whose value is sent as the body (Camel's <c>variableSend</c>); null sends the message body.</summary>
+    public string? VariableSend { get; set; }
+
+    /// <summary>
+    /// The variable receiving the reply (Camel's <c>variableReceive</c>: body as the variable, headers as <c>name.header.key</c>); the message
+    /// is then left unchanged.
+    /// </summary>
+    public string? VariableReceive { get; set; }
+
     /// <inheritdoc />
     public override string ShortName => "toD";
 
@@ -26,5 +35,5 @@ public sealed class ToDynamicDefinition(IExpression uri) : ProcessorDefinition
 
     /// <inheritdoc />
     public override IProcessor CreateProcessor(RouteContext routeContext) =>
-        new SendDynamicProcessor(Uri, Pattern, CacheSize, IgnoreInvalidEndpoint);
+        new SendDynamicProcessor(Uri, Pattern, CacheSize, IgnoreInvalidEndpoint) { VariableSend = VariableSend, VariableReceive = VariableReceive };
 }

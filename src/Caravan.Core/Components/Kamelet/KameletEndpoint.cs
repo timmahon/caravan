@@ -32,11 +32,18 @@ public sealed class KameletEndpoint : EndpointBase
     public override IProducer CreateProducer() => new KameletProducer(this);
 
     /// <inheritdoc />
-    public override IConsumer CreateConsumer(IProcessor processor) =>
-        throw new NotSupportedException($"Consuming from a kamelet is not supported: {EndpointUri}");
+    public override IConsumer CreateConsumer(IProcessor processor) => new KameletConsumer(this, processor);
 
     /// <summary>Creates the route from the template unless done already; returns its id.</summary>
-    internal async ValueTask<string> EnsureRouteAsync(CancellationToken cancellationToken)
+    internal ValueTask<string> EnsureRouteAsync(CancellationToken cancellationToken) => EnsureRouteAsync(null, cancellationToken);
+
+    /// <summary>
+    /// Creates the route from the template unless done already; returns its id. For a consumer the template must not consume from
+    /// <c>kamelet:source</c>, and its sends to <c>kamelet:sink</c> go to the consuming route.
+    /// </summary>
+    /// <param name="consumer">For a consumer: called with the route id before the route is created (and started).</param>
+    /// <param name="cancellationToken">Cancels the creation.</param>
+    internal async ValueTask<string> EnsureRouteAsync(Action<string>? consumer, CancellationToken cancellationToken)
     {
         if (_createdRouteId is { } existing)
         {
@@ -68,6 +75,26 @@ public sealed class KameletEndpoint : EndpointBase
             }
 
             var routeId = RouteId ?? Context.NextNodeId(TemplateId + "-");
+            if (consumer is not null)
+            {
+                if (Support.EndpointUri.Parse(template.Route?.FromUri ?? "kamelet:source") is { Scheme: "kamelet", Path: "source" })
+                {
+                    throw new FailedToCreateRouteFromTemplateException(routeId, TemplateId, "A Kamelet consumed with from must not consume from kamelet:source");
+                }
+
+                templateContext.Handler = route =>
+                {
+                    foreach (var to in route.AllNodes().OfType<Model.ToDefinition>())
+                    {
+                        if (Support.EndpointUri.Parse(to.Uri) is { Scheme: "kamelet", Path: "sink" })
+                        {
+                            to.Uri = $"kamelet:sink?routeId={Uri.EscapeDataString(routeId)}";
+                        }
+                    }
+                };
+            }
+
+            consumer?.Invoke(routeId);
             _createdRouteId = await Context.AddRouteFromTemplateAsync(routeId, TemplateId, templateContext, cancellationToken).ConfigureAwait(false);
             return _createdRouteId;
         }

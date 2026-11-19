@@ -12,6 +12,15 @@ public sealed class ToDefinition(string uri, ExchangePattern? pattern = null) : 
     /// <summary>The exchange pattern to send with; null keeps the exchange's pattern.</summary>
     public ExchangePattern? Pattern { get; set; } = pattern;
 
+    /// <summary>The variable whose value is sent as the body (Camel's <c>variableSend</c>); null sends the message body.</summary>
+    public string? VariableSend { get; set; }
+
+    /// <summary>
+    /// The variable receiving the reply (Camel's <c>variableReceive</c>: body as the variable, headers as <c>name.header.key</c>); the message
+    /// is then left unchanged.
+    /// </summary>
+    public string? VariableReceive { get; set; }
+
     /// <inheritdoc />
     public override string ShortName => "to";
 
@@ -20,5 +29,5 @@ public sealed class ToDefinition(string uri, ExchangePattern? pattern = null) : 
 
     /// <inheritdoc />
     public override IProcessor CreateProcessor(RouteContext routeContext) =>
-        new SendProcessor(routeContext.ResolveEndpoint(Uri), Pattern);
+        new SendProcessor(routeContext.ResolveEndpoint(Uri), Pattern) { VariableSend = VariableSend, VariableReceive = VariableReceive };
 }
