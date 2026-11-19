@@ -1,0 +1,15 @@
+# The shape from the task description.
+- route:
+    id: orders
+    from:
+      uri: direct:orders
+      parameters: { }
+      steps:
+        - setHeader: { name: received, constant: "true" }
+        - choice:
+            when:
+              - simple: "${header.total} > 100"
+                steps: [ { to: mock:big } ]
+            otherwise:
+              steps: [ { to: mock:small } ]
+        - to: { uri: log:orders, parameters: { showHeaders: true } }

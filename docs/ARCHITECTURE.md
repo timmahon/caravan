@@ -71,6 +71,8 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `IManagementService` | Statistics and operations of the context, routes, nodes, endpoints (see "Management") | JMX MBeans |
 | `HealthCheckRegistry` / `IHealthCheck` / `IHealthCheckRepository` | Health checks of the context, routes, consumers, circuit breakers and components | `HealthCheckRegistry` / `HealthCheck` / `HealthCheckRepository` |
 | `Caravan.Hosting`: `AddCaravan`, `CaravanHostedService`, `AddCaravanHealthChecks` | Generic Host integration (see "Hosting") | Camel main / Spring Boot starter |
+| `Caravan.Dsl.Yaml`: `YamlRoutesBuilder`, `RoutesLoader`, `YamlDslSchema` | Routes in Camel's YAML DSL, route reload, JSON schema (see "YAML DSL") | `camel-yaml-dsl`, route reload, `camelYamlDsl.json` |
+| `LanguageExpression` | An expression/predicate in a language named by text, resolved on first use; template parameters substituted into its text | `ExpressionDefinition` (`language`, `expression`) |
 
 ### Error semantics
 
@@ -455,7 +457,9 @@ needs the test framework to call `SetUpAsync`.
 `context.ResolveLanguage(name)` (`LanguageRegistry`, `ICaravanContext.Languages`): languages added to the context (`Languages.Add`), then an
 `ILanguage` bean bound under the name, then global ones (`LanguageRegistry.RegisterGlobal`). Built-ins (`Caravan.Language`): `simple`,
 `constant` (the text), `header` and `exchangeProperty` (the named value), `tokenize` (the body tokenized on the text), `ref` (a registry
-`IExpression`/`IPredicate`, looked up when evaluated), `bean`/`method` (a bean method's result, see "Bean binding"). DSLs that read routes from text (YAML, row 14) resolve expressions this way.
+`IExpression`/`IPredicate`, looked up when evaluated), `bean`/`method` (a bean method's result, see "Bean binding"). DSLs that read routes from text (the YAML DSL) resolve expressions this way:
+`LanguageExpression(language, text, resultType)` (also returned by `Lang.Language`) resolves the language on first use, resolves `{{placeholders}}`
+in the text first (except for `simple`, which does it itself) and is rewritten with the parameters of route templates, like Simple texts.
 `Lang` (`using static Caravan.Builder.Lang;`) has terse factories: `Simple(text)`, `Constant`, `Body`, `Header`, `ExchangeProperty`,
 `Tokenize`, `Language(name, text)`.
 
@@ -816,6 +820,89 @@ the worst state.
 `src/Caravan.OpenTelemetry` (OpenTelemetry.Api): `TracerProviderBuilder.AddCaravanInstrumentation()` / `MeterProviderBuilder.AddCaravanInstrumentation()`
 (`AddSource("Caravan")` / `AddMeter("Caravan")`); options stay on `context.Telemetry`.
 
+### YAML DSL
+
+`src/Caravan.Dsl.Yaml` (Caravan.Core + YamlDotNet) reads Apache Camel's YAML DSL into the same definitions the C# DSL builds; it contains no
+processor logic. `YamlRoutesBuilder.FromFile/FromString/FromStream` parses the YAML (syntax errors are thrown then) into a `RouteBuilder`
+subclass, so `context.AddRoutes(...)` takes it and the file's `errorHandler`, top-level `onException`/`onCompletion` and interceptors apply to
+its routes and templates as a C# route builder's do. The text is interpreted when the builder is built, against the context (languages,
+types, data formats and beans are resolved there).
+
+- **One source of truth.** `Catalog/StepCatalog` (with `BasicSteps`, `RoutingSteps`, `FlowSteps`, `ErrorSteps`), `ModelCatalog` (redelivery
+  policy, error handlers, `onException`, `onCompletion`, interceptors), `TopLevelCatalog` (route, from, templates, configurations, beans),
+  `LanguageCatalog` and `DataFormatCatalog` describe every element: name, options (`OptionSpec`: kind, required, aliases, enum values, nested
+  objects, Camel options accepted without effect, Camel options rejected as unsupported), the inline expression slot, the option a scalar sets
+  (`to: mock:a`), and the function building the definition. `YamlObject` validates a mapping against a spec and has typed getters;
+  `YamlDslSchema.Generate()` turns the same catalog into a JSON schema (draft-07), committed as `schema/caravan-yaml-dsl.json` and checked by a
+  test (`CARAVAN_UPDATE_SCHEMA=1 dotnet test` rewrites it).
+- **Strict, located errors.** Unknown steps, options, languages and top-level elements (with a "did you mean" hint and the valid options),
+  duplicate keys, values of the wrong type, missing required options and expressions, unresolvable types, unknown data format options, invalid
+  Simple texts and unsupported Camel features are `YamlRouteDefinitionException`s: `file:line:column: reason` (1-based, at the offending key or
+  value). Failures of the C# factories (e.g. an exception type without a message constructor) are wrapped with the step's location.
+- **Names.** camelCase as in Camel 4, kebab-case accepted everywhere (`parallel-processing`, `set-header`, `to-d`), plus a few Camel 3 aliases
+  (`strategyRef`, `aggregationRepositoryRef`, `headerName`, `roundRobin`/`random`/... load balancers, `unmarshalTypeName`). Type names are .NET
+  names (full, assembly-qualified, unique simple names, C# keywords, `#class:` prefix) and the Java names of common types and exceptions
+  (`java.lang.IllegalArgumentException` → `ArgumentException`, `java.io.IOException`, `org.apache.camel.CamelExchangeException`, ...).
+- **Expressions** (`ExpressionParser`): short (`simple: "..."`), long (`simple: { expression, resultType, trim }`), wrapped
+  (`expression: { header: x }`), generic (`language: { language, expression }`); `constant`, `header`, `exchangeProperty`, `ref`, `tokenize`
+  (`token`, `regex`, `group`, `skipFirst`), `method` (`ref` or `beanType`, `method`, `scope`), and any language of the context's registry. Simple
+  becomes `SimpleBuilder`/`SimplePredicate`, other languages `LanguageExpression`; texts without placeholders are compiled while loading so
+  their errors are located. Predicates also accept `true`/`false`. Texts are trimmed unless `trim: false` (Camel's default).
+- **Values.** Typed options (integers, booleans, durations — milliseconds, `5s`, `1m30s`, `PT5S`, `00:00:05` —, enums, log levels) resolve
+  property placeholders while loading. Endpoint `parameters` are appended to the URI (escaping `%`, `&`, `+` and spaces only, so placeholders,
+  `#bean` references and `RAW(...)` survive). In route templates placeholders work everywhere: strings, URIs and expressions are substituted by
+  the template copy as usual; when a typed option uses a parameter, the template's route is read again for each route created (a
+  `RouteTemplateContext.Handler` set by the template's configurer), with the parameters substituted.
+- **Top level.** `route` (id, description, group, autoStartup, startupOrder, routeConfigurationId, streamCache, shutdownRoute/RunningTask,
+  errorHandler/errorHandlerRef, properties, from), `from`, `routeTemplate` (parameters, beans, `from` or `route`), `templatedRoute` (parameters,
+  beans), `routeConfiguration` (errorHandler, and lists of `onException`, `onCompletion`, `intercept`, `interceptFrom`, `interceptSendToEndpoint`,
+  items wrapped as Camel writes them or not), `beans`, `errorHandler` (`deadLetterChannel`, `defaultErrorHandler`, `noErrorHandler`,
+  `refErrorHandler`), `intercept`, `interceptFrom`, `interceptSendToEndpoint`, `onException`, `onCompletion`. `onException` and `onCompletion`
+  among the top-level steps of a route are route-scoped; deeper they are rejected. Several YAML documents (`---`) per file are read in order.
+- **Beans** (`BeanFactory`): `type`, `constructors` (list or index map; optional trailing parameters allowed), `factoryMethod` (static),
+  `properties` (nested mappings and dotted keys create and set nested objects, lists fill list/array properties, values converted by the type
+  converters, `#bean:name` refers to beans, placeholders resolved), `initMethod`. A section's beans are bound in the context's registry first and
+  configured afterwards, so properties may refer to later beans; template and templated-route beans are created per route with the parameters
+  substituted.
+- **Loading files** (`RoutesLoader`): a path, a directory (`*.yaml`, `*.yml`) or a glob (`*`, `?`, `**`), relative to `BaseDirectory`, loaded
+  in ordinal order; it records the routes, templates and route configurations each file added (definitions before/after). With `Watch` it is a
+  context service: `FileSystemWatcher`s start with the context, a change is reloaded after `DebounceInterval` of quiet (500 ms, on the context's
+  clock): a file that does not parse keeps its routes; otherwise its routes are stopped and removed, its templates and configurations removed
+  (`ICaravanContext.RemoveRouteConfiguration`), and the file added again; deleted files' routes are removed and new matching files loaded.
+  `Reloaded` reports each reload; `ReloadAsync(path)` does one on demand.
+- **Hosting.** `Caravan.Hosting` references `Caravan.Dsl.Yaml` (YamlDotNet is its only extra dependency) and adds
+  `builder.AddYamlRoutes("routes/*.yaml", o => o.Watch = true)`, relative to the host's content root, loaded when the context is created
+  (before the C# route builders). Caravan.Dsl.Yaml itself does not depend on Hosting.
+
+Coverage: every EIP definition of Caravan.Core has a step.
+
+| Steps | Notes |
+|---|---|
+| `to`, `toD`, `inOnly`, `inOut`, `kamelet` | `uri` + `parameters`, `pattern`; `toD`/`wireTap` URIs are Simple |
+| `process` (ref), `bean` (`ref`/`beanType`, `method`, `scope`) | |
+| `setBody`, `transform`, `setHeader`, `setHeaders`, `setProperty`, `removeHeader(s)`, `removeProperty(ies)`, `convertBodyTo`, `convertHeaderTo`, `setExchangePattern`, `log`, `script`, `sort` (comparator ref), `validate` | |
+| `filter`, `choice` (`when`, `otherwise`), `pipeline`, `step`, `stop` | |
+| `split`, `multicast`, `recipientList`, `routingSlip`, `dynamicRouter`, `wireTap`, `enrich`, `pollEnrich`, `claimCheck` | fan-out options; `onPrepare` ref; `enrich`/`pollEnrich` also take `uri` |
+| `aggregate`, `resequence` (`batchConfig`/`streamConfig`), `loop` (`doWhile`), `delay`, `throttle` (`timePeriodMillis`, `mode`), `sample`, `idempotentConsumer` | strategies, repositories and controllers by ref |
+| `loadBalance` | `roundRobin`, `random`, `weighted`, `failover`, `sticky`, `topic`, `custom` load balancers (Camel 3 and 4 names) |
+| `marshal`, `unmarshal` | `{ json: { unmarshalType: ... } }`: built-in data formats with their properties, or any data format known to the context, or `custom: ref` |
+| `doTry` (`doCatch`, `doFinally`), `onException`, `onCompletion`, `throwException` (type + message, or ref), `rollback` (`markRollbackOnly`, `markRollbackOnlyLast`) | |
+| `circuitBreaker` (`onFallback`, `configuration` ref, `resilience4jConfiguration`, `circuitBreakerConfiguration`), `saga` (`compensation`, `completion`, `option`, `timeout`, without steps: the rest of the route) | |
+
+Differences from Camel: unsupported Camel steps fail with a reason (`threads`, `transacted`, `policy`, variables — `setVariable(s)`,
+`removeVariable`, `convertVariableTo`, `variableSend/Receive` —, `serviceCall`, `tokenizer`, `poll`, `whenSkipSendToEndpoint`), as do the
+REST DSL (`rest`, `restConfiguration`, row 16), `camelContext`, top-level `dataFormats`, Kamelet resource files (`apiVersion`/`kind`), route
+`precondition`/`nodePrefixId`/`routePolicy`/`inputType`/`outputType`, `templatedRoute.prefixId`, `transform` data types, bean
+`factoryBean`/`builderClass`/scripts and `...MethodName` aggregation strategies; Camel options without a Caravan equivalent (executor services,
+`allowOptimisedComponents`, `marker`, ...) are accepted and ignored (listed in the schema as such). `resilience4jConfiguration` maps to Polly:
+`failureRateThreshold`/100 → failure ratio, `minimumNumberOfCalls` → minimum throughput, `slidingWindowSize` read as seconds (Polly's window
+is time-based), `waitDurationInOpenState` (s) → break duration, `timeoutEnabled` + `timeoutDuration` (ms), `bulkheadEnabled` +
+`bulkheadMaxConcurrentCalls`, `recordException`/`ignoreException`; the half-open and slow-call options are ignored. Caravan extensions:
+`maxDegreeOfParallelism` (fan-out, aggregate), `enrich`/`pollEnrich` `uri`, route `errorHandler`, `circuitBreakerConfiguration`. A data format
+with options is configured once when loading (a data format bound under that name is shared, so it is configured in place). The schema lists
+camelCase names, built-in languages and data formats only. There is no YAML dump of C# routes yet (Camel's route dump): the catalog builds
+definitions but does not read them back.
+
 ### Endpoint URIs
 
 - `scheme:path?k=v&k2=v2` (also `scheme://path`). Values may use `RAW(...)` to avoid decoding.
@@ -868,6 +955,8 @@ Each EIP is four pieces, each type in its own file named after the type:
    (`.ToD(uri, cacheSize: 10)`). Add a lambda-shape case to `DslOverloadTests` for every new overload set, so
    that an ambiguity such as `_ => throw ...` matching two overloads fails the build.
 4. **Tests** in `tests/Caravan.Core.Tests/` using `ContextTestBase` and mock endpoints.
+5. **YAML step** in `src/Caravan.Dsl.Yaml/Catalog/` (the step catalog: Camel's name and options, building the definition), a test in
+   `tests/Caravan.Dsl.Yaml.Tests/`, and the regenerated schema (`CARAVAN_UPDATE_SCHEMA=1 dotnet test`).
 
 Use exchange property names from `ExchangePropertyKeys` (add new ones there) and keep Camel's semantics
 unless there is a documented reason to differ (note it in the definition's XML doc).
@@ -947,6 +1036,7 @@ Other conventions:
   `Caravan.LoadBalancing` (built-in load balancers), `Caravan.Idempotent` (idempotent repositories), `Caravan.Saga` (saga SPI and in-memory service),
   `Caravan.DataFormat` (built-in data formats and their registry), `Caravan.Streams` (stream caching),
   `Caravan.Observability` (tracing, metrics, message history, tracers), `Caravan.Management` (management API), `Caravan.Health` (health checks),
-  `Caravan.Components.<Name>`; `Caravan.Testing` (the test kit project), `Caravan.Hosting` (Generic Host), `Caravan.OpenTelemetry`.
-- Tests: xUnit (`tests/Caravan.Core.Tests`, `tests/Caravan.Testing.Tests`, `tests/Caravan.Hosting.Tests`), one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
+  `Caravan.Components.<Name>`; `Caravan.Testing` (the test kit project), `Caravan.Hosting` (Generic Host), `Caravan.OpenTelemetry`,
+  `Caravan.Dsl.Yaml` (YAML DSL; `Caravan.Dsl.Yaml.Catalog` holds the step catalog).
+- Tests: xUnit (`tests/Caravan.Core.Tests`, `tests/Caravan.Testing.Tests`, `tests/Caravan.Hosting.Tests`, `tests/Caravan.Dsl.Yaml.Tests`), one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
   expectation or `TimeProvider` can be used instead; keep the suite fast.

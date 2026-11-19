@@ -1,0 +1,14 @@
+# The "hello world" of Camel's YAML DSL documentation, with the timer firing once.
+- route:
+    id: hello
+    from:
+      uri: "timer:yaml"
+      parameters:
+        period: "1000"
+        repeatCount: 1
+        delay: 0
+      steps:
+        - setBody:
+            simple: "Hello Camel from ${routeId}"
+        - log: "${body}"
+        - to: mock:hello

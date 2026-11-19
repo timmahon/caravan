@@ -38,8 +38,12 @@ public sealed class RouteTemplateContext
     /// <summary>Whether the route is created by the <c>kamelet</c> component.</summary>
     internal bool IsKamelet { get; set; }
 
-    /// <summary>Changes the route's copy of the template's route before it is added.</summary>
-    internal Action<Model.RouteDefinition>? Handler { get; set; }
+    /// <summary>
+    /// Changes the route's copy of the template's route before it is added (after the parameters were substituted). A template's
+    /// <see cref="Configurer"/> may set it (chaining any handler already set), e.g. the YAML DSL rebuilds the steps of a template whose typed
+    /// options use parameters.
+    /// </summary>
+    public Action<Model.RouteDefinition>? Handler { get; set; }
 
     /// <summary>Beans created for the route once its id is known, after the template's beans (same name: these win).</summary>
     internal List<Model.TemplateBeanDefinition> Beans { get; } = [];

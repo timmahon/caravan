@@ -14,6 +14,7 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\Caravan.Core\Caravan.Core.csproj" />
+    <ProjectReference Include="..\Caravan.Dsl.Yaml\Caravan.Dsl.Yaml.csproj" />
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="Caravan.Hosting.Tests" />

@@ -99,6 +99,7 @@ internal sealed class DefinitionCloner
             SimpleExpression expression => ChangedText(expression.Text) is { } text ? SimpleLanguage.Expression(text, expression.ResultType) : value,
             SimplePredicate predicate => ChangedText(predicate.Text) is { } text ? SimpleLanguage.Predicate(text) : value,
             SimpleBuilder builder => ChangedText(builder.Text) is { } text ? new SimpleBuilder(text, builder.ResultType) : value,
+            LanguageExpression language => ChangedText(language.Text) is { } text ? language.WithText(text) : value,
             Array array => CopyArray(array),
             _ when IsDefinition(type) => CopyDefinition(value, type),
             _ when type.IsGenericType && type.GetGenericTypeDefinition() == typeof(List<>) => CopyList((IList)value, type),

@@ -46,7 +46,6 @@ public static class Lang
     public static IExpression Language(string language, string text)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(language);
-        IExpression? resolved = null;
-        return new FuncExpression(e => (resolved ??= e.Context.ResolveLanguage(language).CreateExpression(text)).Evaluate(e), $"{language}{{{text}}}");
+        return new LanguageExpression(language, text);
     }
 }

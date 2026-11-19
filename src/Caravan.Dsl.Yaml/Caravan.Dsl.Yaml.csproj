@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Caravan.Dsl.Yaml</RootNamespace>
+    <Description>Caravan YAML DSL: loads routes, templates, route configurations and beans written in Apache Camel's YAML DSL, with a JSON schema.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="YamlDotNet" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Caravan.Core\Caravan.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Caravan.Dsl.Yaml.Tests" />
+  </ItemGroup>
+</Project>
