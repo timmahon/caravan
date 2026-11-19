@@ -8,10 +8,23 @@
     <Authors>Caravan contributors</Authors>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <RepositoryUrl>https://github.com/timmahon/caravan</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/timmahon/caravan</PackageProjectUrl>
+    <VersionPrefix>0.1.0</VersionPrefix>
+    <VersionSuffix>preview</VersionSuffix>
+    <PackageTags>integration;eip;enterprise-integration-patterns;camel;routing;messaging</PackageTags>
+    <Copyright>Caravan contributors</Copyright>
   </PropertyGroup>
   <PropertyGroup Condition="!$(MSBuildProjectName.EndsWith('Tests'))">
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
+  <!-- Packages carry the repository README (shown on nuget.org). -->
+  <ItemGroup Condition="!$(MSBuildProjectName.EndsWith('Tests'))">
+    <None Include="$(MSBuildThisFileDirectory)README.md" Pack="true" PackagePath="/" Visible="false" />
+  </ItemGroup>
   <!-- Source projects: one type per file (SA1402) and file name = type name (SA1649), see .editorconfig. -->
   <ItemGroup Condition="!$(MSBuildProjectName.EndsWith('Tests'))">
     <PackageReference Include="StyleCop.Analyzers" PrivateAssets="all" IncludeAssets="runtime; build; native; contentfiles; analyzers; buildtransitive" />

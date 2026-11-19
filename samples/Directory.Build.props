@@ -1,0 +1,8 @@
+<Project>
+  <!-- Samples follow the repository's rules (warnings as errors, one type per file, XML docs) but are never packed. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <WarnOnPackingNonPackableProject>false</WarnOnPackingNonPackableProject>
+  </PropertyGroup>
+</Project>

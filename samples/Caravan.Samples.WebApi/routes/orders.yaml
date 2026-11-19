@@ -1,0 +1,34 @@
+# The YAML half of the API: POST /api/orders. Hot-reloaded when edited (Watch = true in WebApiSample).
+- rest:
+    path: /api/orders
+    tag: orders
+    post:
+      - type: Caravan.Samples.WebApi.OrderRequest
+        outType: Caravan.Samples.WebApi.OrderConfirmation
+        consumes: application/json
+        produces: application/json
+        to: direct:placeOrder
+
+- route:
+    id: place-order
+    from:
+      uri: direct:placeOrder
+      steps:
+        - setVariable: { name: sku, simple: "${body.Sku}" }
+        - log: "Placing order for ${body.Quantity} x ${variable.sku}"
+        - doTry:
+            steps:
+              - bean: { ref: inventory, method: Reserve }
+              - wireTap: "seda:audit"
+            doCatch:
+              - exception: [ System.InvalidOperationException ]
+                steps:
+                  - setHeader: { name: CaravanHttpResponseCode, constant: 409 }
+                  - setBody: { simple: "${exception.message}" }
+
+- route:
+    id: audit
+    from:
+      uri: seda:audit
+      steps:
+        - log: "Audit: order ${body.OrderId} reserved ${body.Quantity} x ${body.Sku}"
