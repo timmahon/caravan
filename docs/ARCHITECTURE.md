@@ -39,8 +39,10 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `IInflightRepository` | Exchanges being routed, per route, with durations (fed by `RouteProcessor`) | `InflightRepository` |
 | `IShutdownStrategy` / `IShutdownAware` | Graceful stop/suspend of routes; consumers that queue or loop take part | `ShutdownStrategy` / `ShutdownAware` |
 | `SupervisingRouteController` | Retries routes that fail to start, with backoff | `SupervisingRouteController` |
-| `IAggregationStrategy` / `AggregationStrategies` | Combine exchanges (multicast, split, recipient list; later the aggregator) | `AggregationStrategy` / `AggregationStrategies` |
+| `IAggregationStrategy` / `AggregationStrategies` | Combine exchanges (multicast, split, recipient list, aggregator) | `AggregationStrategy` / `AggregationStrategies` |
 | `MulticastProcessor` | Fan-out engine of `multicast`, `split` (`SplitProcessor`) and `recipientList` (`RecipientListProcessor`) | `MulticastProcessor` |
+| `AggregateProcessor` / `IAggregationRepository` | The `aggregate` EIP and the store of its groups (`MemoryAggregationRepository` by default) | `AggregateProcessor` / `AggregationRepository` |
+| `BatchResequencerProcessor` / `StreamResequencerProcessor` | The `resequence` EIP (batch and stream) | `Resequencer` / `StreamResequencer` |
 | `ProducerCache` | LRU cache of started senders per endpoint, for dynamic endpoints (`toD`, `wireTap`, `recipientList`) | `ProducerCache` |
 
 ### Error semantics
@@ -126,8 +128,8 @@ from `FanOutDefinition`, DSL options are named parameters such as `.Split(Expr.T
   input exchange continues unchanged, failing if a part failed). The input exchange keeps the failed branch's `IsRedeliveryExhausted`,
   so enclosing error handlers do not handle the failure a second time. `stopOnException` stops at the first failed branch (exception,
   rollback, or a failure an error handler handled) and fails the input exchange with `CaravanExchangeException("Multicast processing
-  failed for number N")` (or takes the handled branch as the result). The strategy API also carries the aggregator's hooks for PR 6:
-  `OnTimeout`, `CanPreComplete`/`PreComplete`. Built-ins (`Caravan.Aggregation`, factories on `AggregationStrategies`): UseLatest,
+  failed for number N")` (or takes the handled branch as the result). The strategy API also carries the aggregator's hooks
+  (`OnTimeout`, `CanPreComplete`/`PreComplete`, see below). Built-ins (`Caravan.Aggregation`, factories on `AggregationStrategies`): UseLatest,
   UseOriginal, GroupedExchange, GroupedBody, GroupedMessage, String, `From(lambda)`, `Body<TItem, TResult>(fold)`, `Flexible<T>()`.
   `aggregationStrategyRef` looks a strategy up in the registry when the route is built. Keep per-aggregation state on the exchanges
   (the grouped strategies use the `CaravanGroupedExchange` property), never in strategy fields: one instance serves all exchanges.
@@ -150,6 +152,79 @@ Differences from Camel: a string is not split on commas by default (only with th
 branch never stops the parent; with `shareUnitOfWork` a branch failure is always left to the parent's error handler (sub-level
 `onException` handling is skipped); the timeout is ignored without parallel processing (as Camel) and cancels unfinished branches
 (Camel lets them run); there is no executor service option, only `maxDegreeOfParallelism`.
+
+### Aggregator
+
+`.Aggregate(correlation, strategy, a => a.CompletionSize(3).CompletionTimeout(...), then => then.To(...))`: `AggregateDefinition`
+(options are plain properties, `AggregateBuilder` sets them; `AggregateSettings` is the processor's copy) and `AggregateProcessor`, a port of
+Camel's `AggregateProcessor`.
+
+- **Groups.** The correlation expression's value, as a string, is the key; a null or blank key fails the exchange
+  (`CaravanExchangeException("Invalid correlation key")`) unless `IgnoreInvalidCorrelationKeys`. Each incoming exchange is copied
+  (`CreateCorrelatedCopy`), the group is read from the repository, the copy is aggregated into it (`Aggregate(old, new)`), the result gets
+  `CaravanAggregatedSize` and is stored back unless the group completed. The incoming exchange then continues unchanged with the steps after
+  the `aggregate`. Aggregation is serialized by one lock per processor (Camel's default), or runs without it with `OptimisticLocking`: the
+  repository (an `IOptimisticLockingAggregationRepository`) detects conflicting updates (`OptimisticLockingException`) and the whole
+  aggregation is retried on a fresh copy per `OptimisticLockRetryPolicy` (delays on the context's clock), failing the exchange with
+  "Exhausted optimistic locking retry attempts" in the end.
+- **Completion.** At least one condition is required (else the route fails to be created). Checked after aggregating, on the aggregated exchange,
+  or with `EagerCheckCompletion` on the incoming one (with `CaravanAggregatedSize` set to the size the group will have), in Camel's order:
+  `CompletionFromBatchConsumer` (completes every group of the batch once `CaravanBatchSize` exchanges arrived or one has `CaravanBatchComplete`),
+  the `CaravanAggregationCompleteCurrentGroup` property set by the strategy, `CompletionPredicate` (or the strategy itself when it is an
+  `IPredicate`), `CompletionSize` (an expression takes precedence when positive). `CompletionTimeout` (fixed or per exchange) is an inactivity
+  timeout per group, restarted by every exchange and checked every `CompletionTimeoutCheckerInterval` (1 s) by a background loop;
+  `CompletionInterval` completes all groups periodically (not combinable with a fixed timeout, as in Camel). A strategy with `CanPreComplete`
+  completes the group *before* the new exchange when `PreComplete(old, new)` says so; the new exchange starts the next group.
+  `CompletionOnNewCorrelationGroup`, the `CaravanAggregationCompleteAllGroups` header (exchange not aggregated) or property (set by the strategy)
+  and the `...Inclusive` header force the completion of other groups. `CaravanAggregatedCompletedBy` is `size`, `timeout`, `interval`,
+  `predicate`, `consumer`, `force` or `strategy` (`AggregationCompletedBy`); `CaravanAggregatedCorrelationKey` and, for timeouts,
+  `CaravanAggregatedTimeout` are set too.
+- **After completion.** The group is removed from the repository and its timeout, its key is closed with `CloseCorrelationKeyOnCompletion(capacity)`
+  (later exchanges fail with `ClosedCorrelationKeyException`; oldest keys forgotten beyond the capacity, 0 = unbounded), `OnTimeout(exchange, -1, -1,
+  timeout)` is called for timeouts, then the group is discarded (`DiscardOnCompletionTimeout`, or `DiscardOnAggregationFailure` when the strategy
+  threw: the incoming exchange then succeeds) or sent. Sending calls the strategy's `OnCompletion(exchange, input)` and processes the aggregated
+  exchange through the nested block as a *new* exchange, detached from the incoming ones (`DetachedExchangeSender`: own unit of work, tracked in
+  the inflight repository under the route id, remaining failures logged). Without `ParallelProcessing` it is sent on the completing thread (the
+  incoming exchange's, before it continues; the timeout checker's; the caller of a forced completion); with it on the thread pool, at most
+  `MaxDegreeOfParallelism` (10) at a time. A successful send confirms the exchange id in the repository.
+- **Control and shutdown.** `IAggregateController` (`DefaultAggregateController`) forces the completion or discarding of one group or all.
+  `AggregateProcessor` is a route service implementing `IShutdownAware`: when its route stops, the shutdown strategy (after the consumer stopped and
+  inflight exchanges completed) calls `PrepareShutdown`, which completes all groups with `ForceCompletionOnStop` (not on suspend), and waits until
+  `PendingExchangesSize` (exchanges being sent, plus the stored groups with `CompleteAllOnStop`) is zero. Stopping the processor stops its
+  background loops, waits for sends and stops the repository (the memory one then forgets its groups, as in Camel). On start, timeouts are
+  restored for groups found in the repository.
+
+**Repository SPI** (`Caravan.Spi`). `IAggregationRepository`: `AddAsync`/`GetAsync`/`RemoveAsync`/`ConfirmAsync`/`GetKeysAsync`, asynchronous so a
+durable store (SQL, Redis) fits. Repositories store **copies** (or serialized forms) and return copies, keeping exchange ids;
+`RemoveAsync` receives the completed exchange. Repositories that are `IService`s are started and stopped with the processor.
+`IOptimisticLockingAggregationRepository` adds a conditional `AddAsync(key, old, new)`; it and `RemoveAsync` throw `OptimisticLockingException`
+when the stored group is not the version read (versions travel in `CaravanAggregationRepositoryVersion` and must never be reused for a key).
+`IRecoverableAggregationRepository` keeps completed exchanges until confirmed: with `UseRecovery` the processor scans every `RecoveryInterval`,
+resubmits unconfirmed exchanges it is not sending (`CaravanRedelivered`, `CaravanRedeliveryCounter`, `CaravanRedeliveryMaxCounter` headers) and
+after `MaximumRedeliveries` sends them to `DeadLetterUri` (required then) and confirms them. `MemoryAggregationRepository` is the default
+(optimistic locking optional; with it the `CaravanGroupedExchange` list is copied too, so a failed attempt leaves the stored group unchanged).
+
+Differences from Camel: the batch consumer properties are read from the incoming exchange; in pre-completion mode the other conditions are still
+checked after aggregating (Camel only checks `preComplete` and timeouts); `ForceCompletionOnStop` does not apply to suspension; there are no
+executor service options; a recoverable repository receives the completed exchange rather than the group as last read.
+
+### Resequencer
+
+`.Resequence(expression, r => r.Batch(...) | r.Stream(...), then => ...)` (`ResequenceDefinition`, configs `BatchResequencerConfig` /
+`StreamResequencerConfig`; the two-argument overload is a default batch resequencer). Incoming exchanges are copied and continue at once; the
+copies are sent through the nested block one at a time, in order, by a single background task (`DetachedExchangeSender` as above). Both
+processors are `IShutdownAware` route services: a graceful stop emits what they hold before they stop.
+
+- **Batch** (`BatchResequencerProcessor`, Camel's `Resequencer`): a batch is emitted, sorted by the expression with type coercion
+  (`ObjectHelper.TypeCoerceCompare`), once it holds `BatchSize` (100) exchanges or `BatchTimeout` (1 s, an `ITimer` on the context's clock) after
+  its first exchange; `AllowDuplicates` (else only the first of equal keys is kept), `Reverse`, `IgnoreInvalidExchanges` (else a null or failing
+  key fails the exchange). Difference from Camel: the timeout is not restarted by each arrival.
+- **Stream** (`StreamResequencerProcessor`, Camel's `StreamResequencer`/`ResequencerEngine`): `long` sequence numbers are delivered as soon as
+  they follow the last delivered one; an exchange with a gap before it (neither the successor of the last delivered nor with its predecessor
+  waiting) gets a `Timeout` (1 s) timer, cancelled when the predecessor arrives, after which the gap is given up on. As in Camel the first
+  exchange waits for its timeout. Duplicates waiting are dropped; `RejectOld` fails exchanges older than the last delivered one with
+  `MessageRejectedException`; senders wait while `Capacity` (1000) exchanges are held; `DeliveryAttemptInterval` bounds how long delivery
+  sleeps without a signal. Difference from Camel: held exchanges are delivered on stop instead of dropped.
 
 ### Endpoint URIs
 
@@ -229,6 +304,9 @@ Built-in components: `direct`, `seda` (and `vm`, its process-wide variant), `tim
   Suspension stops taking new work and waits for the current work (bounded by the forced shutdown).
 - A consumer that queues messages or runs its own loop implements `IShutdownAware`: report queued messages in
   `PendingExchangesSize` (drained with `ShutdownRunningTask.CompleteAllTasks`) and stop waiting / cancel work when forced.
+- Route services (processors) may implement `IShutdownAware` too (Camel's `ShutdownPrepared`): when routes stop (not suspend), once consumers
+  stopped and inflight exchanges completed, they get `PrepareShutdown(..., forced: false)` and the shutdown waits until their
+  `PendingExchangesSize` is zero (aggregator, resequencers).
   Run background loops on `Task.Run`; `DoStopAsync` cancels them and awaits them unless forced.
 - Exchanges created by background consumers use a token linked to the consumer's forced shutdown and
   `ShutdownToken`; `RouteProcessor` defaults `exchange.CancellationToken` to `ShutdownToken`.

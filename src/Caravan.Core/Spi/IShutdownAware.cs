@@ -4,6 +4,12 @@ namespace Caravan.Spi;
 /// A consumer that takes part in graceful shutdown (Camel's <c>ShutdownAware</c> and <c>ShutdownPrepared</c>),
 /// typically because it queues messages (e.g. <c>seda</c>) or runs its own loop (timers, scheduled polls).
 /// </summary>
+/// <remarks>
+/// Route services (processors registered with <see cref="RouteContext.AddService"/>) may implement it too, like Camel's
+/// <c>ShutdownPrepared</c> services: when a route is stopped, once its consumer stopped and its inflight exchanges completed, they are
+/// told to prepare (<see cref="PrepareShutdown"/>, not forced) and the stop waits until their <see cref="PendingExchangesSize"/> drops to
+/// zero (e.g. the aggregator's completed groups being sent). <see cref="DeferShutdown"/> does not apply to them.
+/// </remarks>
 public interface IShutdownAware
 {
     /// <summary>Whether the consumer should be stopped after the other routes completed their inflight exchanges.</summary>

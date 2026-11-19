@@ -38,6 +38,39 @@ public class DslOverloadTests : ContextTestBase
     }
 
     [Fact]
+    public void Aggregate_and_resequence_lambda_shapes_bind_to_a_single_overload()
+    {
+        var route = RouteBuilder.Create(b => b.From("direct:start")
+            .Aggregate(Expr.Header("id"), AggregationStrategies.GroupedBody(), a => a.CompletionSize(2), then => then.To("mock:a"))
+            .Aggregate(
+                e => e.Message.GetHeader("id"),
+                null,
+                a => a
+                    .AggregationStrategyRef("s")
+                    .CompletionSize(_ => 2)
+                    .CompletionSize(Expr.Header("size"))
+                    .CompletionTimeout(TimeSpan.FromSeconds(1))
+                    .CompletionTimeout(_ => 1000)
+                    .CompletionTimeout(Expr.Header("timeout"))
+                    .CompletionPredicate(_ => true)
+                    .CompletionPredicate(_ => throw new InvalidOperationException())
+                    .CompletionPredicate((string s) => s.Length > 3)
+                    .CompletionPredicate(Pred.Constant(true))
+                    .ParallelProcessing()
+                    .OptimisticLocking(),
+                _ => { })
+            .Aggregate((Order o) => o.Id, AggregationStrategies.UseLatest(), a => a.CompletionInterval(TimeSpan.FromSeconds(1)), then => then.Log("x"))
+            .Aggregate(_ => throw new InvalidOperationException(), AggregationStrategies.UseLatest(), a => a.CompletionSize(1), _ => { })
+            .Resequence(Expr.Body(), then => then.To("mock:b"))
+            .Resequence(e => e.Message.Body, r => r.Stream(capacity: 10), then => then.To("mock:c"))
+            .Resequence(_ => 1, r => r.Batch(reverse: true), _ => { })
+            .Resequence(_ => throw new InvalidOperationException(), _ => { }))
+            .Build(Context).Single();
+
+        Assert.Equal(8, route.Outputs.Count);
+    }
+
+    [Fact]
     public void Error_handling_lambda_shapes_bind_to_a_single_overload()
     {
         var routes = RouteBuilder.Create(b =>
