@@ -109,7 +109,7 @@ internal sealed class ProducerTemplate(ICaravanContext context) : IProducerTempl
         _producers.GetOrAdd(endpoint, ep => new Lazy<Task<IProducer>>(async () =>
         {
             await ep.StartAsync().ConfigureAwait(false);
-            var producer = ep.CreateProducer();
+            var producer = SendToEndpointInterceptors.CreateProducer(ep);
             await producer.StartAsync().ConfigureAwait(false);
             return producer;
         })).Value;

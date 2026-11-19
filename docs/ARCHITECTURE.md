@@ -50,6 +50,9 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `IClaimCheckRepository` / `MemoryClaimCheckRepository` | Per-exchange store of the `claimCheck` EIP | `ClaimCheckRepository` |
 | `CircuitBreakerProcessor` / `ICircuitBreakerStateRegistry` | The `circuitBreaker` EIP (Polly v8) and its circuits by node id | `Resilience4jProcessor` / JMX |
 | `ISagaService` / `ISagaCoordinator` / `InMemorySagaService` | Saga SPI of the `saga` EIP and `saga` component, in-memory default | `CamelSagaService` / `CamelSagaCoordinator` / `InMemorySagaService` |
+| `InterceptDefinition` / `InterceptFromDefinition` / `InterceptSendToEndpointDefinition` | `intercept`, `interceptFrom`, `interceptSendToEndpoint` (see "Interception") | same |
+| `ISendToEndpointInterceptor` / `SendToEndpointInterceptors` | Intercept every send to matching endpoints (producer decorator), used by `interceptSendToEndpoint` and endpoint mocking | `InterceptSendToEndpoint` / `EndpointStrategy` |
+| `Caravan.Testing`: `AdviceWith`, `NotifyBuilder`, `CaravanTestSupport` | Test kit (see "Testing toolkit") | `camel-test`: `AdviceWith`, `NotifyBuilder`, `CamelTestSupport` |
 
 ### Error semantics
 
@@ -345,6 +348,89 @@ wait duration; `onFallbackViaNetwork` (Hystrix only in Camel) is kept with the m
 Differences from Camel: the block form scopes the saga to the block (Camel's `saga()` covers the rest of the route — the chained form does
 that); `MaxRetryAttempts` counts retries after the first call.
 
+### Interception
+
+Camel's three interceptors, defined on a `RouteBuilder` (`b.Intercept(...)`, `b.InterceptFrom(...)`, `b.InterceptSendToEndpoint(...)`) and
+applied to that builder's routes. `RouteBuilder.Build` copies them into `RouteDefinition.Intercepts`, `InterceptFroms` and
+`InterceptSendToEndpoints` (as with builder-level `onException`); the lists are public so that route configurations (row 12) and
+`AdviceWith` can add to them. Blocks are `RouteSteps` builders (`InterceptBuilder`, `InterceptSendToEndpointBuilder`) with `When(predicate)`;
+`Stop()` in a block stops the exchange.
+
+- **intercept** runs before every node of the route, nested nodes included (choice branches, split parts, multicast branches), but not the
+  nodes of intercept, `onException` and `onCompletion` blocks. `CaravanContext.CreateRoute` builds each block once per route (route service),
+  then adds an `InterceptNodeStrategy` (`IInterceptStrategy`) to `RouteContext.InterceptStrategies` *before* the steps are built, so
+  `CreateNodeProcessor` wraps every node in an `InterceptProcessor`: if `When` matches, it sets `CaravanInterceptedRouteId`/`NodeId`/
+  `RouteEndpointUri`, runs the block and runs the node unless the block failed, stopped, rolled back or handled the exchange
+  (`RoutingFlags` compares the exchange's flags before and after the block). The interceptor sits outside the node's error handler, but the
+  block's own nodes are wrapped by the route's error handler like any node, so a failing block is redelivered/handled per `onException` or
+  the dead letter channel.
+- **interceptFrom(pattern?)** wraps the route's steps (`InterceptFromProcessor`, inside `OnCompletionProcessor`) when the route's endpoint
+  matches the pattern (`EndpointHelper.MatchEndpoint`: exact after normalization, wildcard or regular expression, also without query
+  parameters; null = all routes). It sets the header and property `CaravanInterceptedEndpoint` to the route's endpoint URI and runs on every
+  entry into a route, also for a `direct` call from another route.
+- **interceptSendToEndpoint(pattern, skipSendToOriginalEndpoint, afterUri)** is universal, as in Camel where the endpoint itself is
+  decorated: producers are created through `SendToEndpointInterceptors.CreateProducer(endpoint)` (by `SendProcessor`, hence `to`, every
+  `ProducerCache` user — `toD`, `recipientList`, `wireTap`, `enrich`, `routingSlip`, dead letter channels — and by producer templates). The
+  returned `InterceptSendToEndpointProducer` reads the context's `SendToEndpointInterceptors` on every send (a lock-free versioned
+  snapshot; the chain of interceptors matching its endpoint is cached per version), so interceptors added later, e.g. by `AdviceWith`, apply
+  to existing producers too; with none registered a send costs one array read. When a route is created, each of its
+  `InterceptSendToEndpointDefinition`s is registered once in the context as an `InterceptSendToEndpointInterceptor` (its block and after
+  endpoint are built with a route context of their own and run as a context service). Per send: the header `CaravanInterceptedEndpoint` is
+  set, the block runs if `When` matches, then — unless the block failed or stopped the exchange, or `skipSendToOriginalEndpoint` and `When`
+  matched — the original producer runs, then `afterUri` (with the original endpoint's reply). The block runs inside the sending node, so the
+  sender's error handler covers it. Sends made by a block are not intercepted again by the same interceptor (an exchange property guards
+  it), so `interceptSendToEndpoint("mock:*", i => i.To("mock:audit"))` does not loop.
+
+Differences from Camel: the intercepted endpoint is not a separate endpoint object (`GetEndpoint` returns the real endpoint and
+interception happens in its producers); `afterUri` runs only when the original endpoint was called; `interceptFrom` also sets the
+intercepted endpoint as an exchange property; intercepts skip `onException`/`onCompletion` blocks; `ExchangeSending`/`ExchangeSent` events
+of a `to` refer to the original endpoint even when it was skipped.
+
+### Testing toolkit
+
+`src/Caravan.Testing` (namespace `Caravan.Testing`, depends on `Caravan.Core` and `Microsoft.Extensions.TimeProvider.Testing`, no test
+framework):
+
+- **AdviceWith** (`AdviceWith.RouteAsync(context, routeId, a => ...)` / `context.AdviceWithAsync(...)`) changes a route's *definition*.
+  Nodes without an id first get their generated id (`NextNodeId`), so ids stay stable across advice and restarts. The lambda records
+  operations, applied in order when it returns: `ReplaceFromWith(uri)`; `WeaveById/ByToUri/ByToString/ByType<T>(...)` returning an
+  `AdviceWithBuilder` (`SelectFirst/Last/Index/Range`, `MaxDeep(n)` — 1 = top level; default: every match at any depth, found by a
+  depth-first walk of `ProcessorDefinition.Children`) with `Replace/Remove/Before/After(r => ...)`; `WeaveAddFirst()/WeaveAddLast()`;
+  `MockEndpoints(patterns)` / `MockEndpointsAndSkip(patterns)`; and `Intercept`/`InterceptFrom`/`InterceptSendToEndpoint` added to the route.
+  Weaving edits the list holding the node (the route's `Outputs`, a definition's `Outputs`, a choice's `WhenClauses`, ...; found by
+  reflection over the parent's list properties) or a single-valued slot (`Otherwise`, `Finally`, `OnFallback`: replace with one node or
+  remove); a weave matching nothing fails. Before the context starts the definition is changed in place and created at start; on a started
+  context the route is stopped, removed, changed and added again (`AddRoutesAsync`), so it restarts with new processors that pick up the
+  route's error handler, `onException`, `onCompletion` and intercepts as usual.
+- **Mocking endpoints** (`MockEndpointsInterceptor`, a `ISendToEndpointInterceptor`): every send to a matching endpoint first goes to
+  `mock:<normalized uri without parameters>` (`EndpointHelper.MockEndpointUri`, e.g. `mock:direct:foo`), then to the endpoint unless
+  skipping. `mock:` endpoints are never mocked. Registered context-wide, once per pattern set.
+- **NotifyBuilder** listens to exchange events (`IEventNotifier`; `CaravanContext.EventNotifiers` is a copy-on-write list, so notifiers can be
+  added while exchanges are routed). Predicates form groups combined with `And()/Or()/Not()`; within a group, events flow through the
+  predicates in order and filters (`From`, `FromRoute`, `Filter`, `WereSentTo` — the latter inserted at the start of its group, as Camel)
+  stop events of other exchanges. Conditions: `WhenReceived/Done/Completed/Failed(n)`, `WhenExactlyDone/Completed/Failed(n)`,
+  `When(Exact)BodiesReceived/Done(...)`, `WhenAny/AllReceivedMatches`, `WhenAny/AllDoneMatches`. Received = `ExchangeCreated` (a route created
+  the unit of work), done = `ExchangeCompleted`/`ExchangeFailed` of that unit of work: an exchange crossing `direct` routes counts once, a
+  `seda` hand-over counts again in the consuming route (new exchange id). `MatchesAsync(timeout)` waits in real time for the first match and
+  returns the current state.
+- **CaravanTestSupport**: an `IAsyncDisposable` base class: `SetUpAsync()` creates the context (`CreateCaravanContext`), sets the shutdown
+  timeout, the fake clock (`UseFakeTimeProvider` → `FakeTimeProvider`), registry beans (`BindToRegistry`), endpoint mocking
+  (`IsMockEndpoints`/`IsMockEndpointsAndSkip`), adds `CreateRouteBuilder(s)` and starts the context unless `UseAdviceWith`; members
+  `Context`, `Template`, `ConsumerTemplate`, `AdviceWithAsync`, `StartAsync`, `GetMockEndpoint(uri, create)`,
+  `AssertMockEndpointsSatisfiedAsync`, `ResetMocks`. With xUnit, implement `IAsyncLifetime` explicitly and call `SetUpAsync`/`DisposeAsync`.
+- **Mock endpoint** (`Caravan.Core`): besides counts, bodies and headers, fluent clauses `Message(i)` / `AllMessages()` /
+  `ExpectedBodyReceived()` with `Body()`, `Body<T>()`, `Header(n)`, `Property(n)`, `Value(expr)` and `IsEqualTo`, `IsNull`,
+  `IsGreaterThan`, `Contains`, `Regex`, `Matches(...)` (Camel type coercion); `ExpectedMessagesMatches`, `ExpectsAscending/Descending`,
+  `ExpectsNoDuplicates`, `ExpectedPropertyValuesReceivedInAnyOrder`, `ExpectedExchangePattern`, `Expects(Action)`; `ReturnReplyBody` /
+  `ReturnReplyHeader` (applied after `WhenAnyExchangeReceived`); `AssertExchangeReceived(i)`, `GetExchanges()`; `ResultWaitTime`,
+  `ResultMinimumWaitTime` (fails when the expected messages arrive sooner than that after the assertion started) and `AssertPeriod` (re-checks
+  after the count is reached to catch late extra messages).
+
+Differences from Camel: AdviceWith uses lambdas for the replacing steps (`Replace(r => r.To(...))` instead of `replace().to(...)`);
+`WeaveByToString` matches the node's `Label` (`to[mock:a]`) or `ToString()`; NotifyBuilder's bodies conditions check every position (Camel
+only the latest); the test base class takes properties (`IsMockEndpoints`, `UseAdviceWith`) instead of overridable `isXxx()` methods and
+needs the test framework to call `SetUpAsync`.
+
 ### Endpoint URIs
 
 - `scheme:path?k=v&k2=v2` (also `scheme://path`). Values may use `RAW(...)` to avoid decoding.
@@ -367,6 +453,8 @@ Optional features hook into the core without changing it:
 - `RouteBuilderHooks` (context extension) – post-process route definitions after `Configure()`.
 - `RouteDefinition.Extensions` – feature-specific per-route configuration keyed by type.
 - `ICaravanContext.InterceptStrategies` / `RouteContext.InterceptStrategies` – wrap nodes.
+- `SendToEndpointInterceptors.For(context)` – intercept every send to matching endpoints (`ISendToEndpointInterceptor`). Code that sends
+  to endpoints creates producers with `SendToEndpointInterceptors.CreateProducer(endpoint)`, never `endpoint.CreateProducer()` directly.
 
 ## Adding an EIP
 
@@ -465,6 +553,6 @@ Other conventions:
 - File-scoped namespaces: `Caravan` (main API), `Caravan.Spi`, `Caravan.Model`, `Caravan.Builder`,
   `Caravan.Processors`, `Caravan.Support`, `Caravan.Impl`, `Caravan.Aggregation` (built-in aggregation strategies),
   `Caravan.LoadBalancing` (built-in load balancers), `Caravan.Idempotent` (idempotent repositories), `Caravan.Saga` (saga SPI and in-memory service),
-  `Caravan.Components.<Name>`.
-- Tests: xUnit, one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
+  `Caravan.Components.<Name>`; `Caravan.Testing` (the test kit project).
+- Tests: xUnit (`tests/Caravan.Core.Tests`, `tests/Caravan.Testing.Tests`), one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
   expectation or `TimeProvider` can be used instead; keep the suite fast.

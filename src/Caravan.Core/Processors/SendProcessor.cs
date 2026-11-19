@@ -50,7 +50,7 @@ public sealed class SendProcessor(IEndpoint endpoint, ExchangePattern? pattern =
     protected override async Task DoStartAsync(CancellationToken cancellationToken)
     {
         await Endpoint.StartAsync(cancellationToken).ConfigureAwait(false);
-        _producer = Endpoint.CreateProducer();
+        _producer = SendToEndpointInterceptors.CreateProducer(Endpoint);
         await _producer.StartAsync(cancellationToken).ConfigureAwait(false);
     }
 

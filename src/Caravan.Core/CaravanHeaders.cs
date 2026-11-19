@@ -26,4 +26,10 @@ public static class CaravanHeaders
     /// and sent to compensation and completion endpoints.
     /// </summary>
     public const string SagaLongRunningAction = "Long-Running-Action";
+
+    /// <summary>
+    /// The URI of the endpoint intercepted by <c>interceptSendToEndpoint</c>, or of the route's endpoint for <c>interceptFrom</c>
+    /// (Camel's <c>Exchange.INTERCEPTED_ENDPOINT</c>; <c>interceptFrom</c> also sets it as an exchange property).
+    /// </summary>
+    public const string InterceptedEndpoint = "CaravanInterceptedEndpoint";
 }

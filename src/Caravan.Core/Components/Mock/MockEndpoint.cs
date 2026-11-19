@@ -19,6 +19,7 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
     private readonly List<Exchange> _received = [];
     private readonly List<Func<MockEndpoint, string?>> _expectations = [];
     private readonly Dictionary<int, IProcessor> _processorsByIndex = [];
+    private readonly List<Action<Exchange>> _replyActions = [];
     private TaskCompletionSource _countReached = NewTcs();
     private int _receivedCounter;
     private int _expectedCount = -1;
@@ -43,6 +44,12 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
     /// Also used as the wait time when expecting zero messages.
     /// </summary>
     public TimeSpan AssertPeriod { get; set; } = TimeSpan.Zero;
+
+    /// <summary>
+    /// The minimum time <see cref="AssertIsSatisfiedAsync(TimeSpan?)"/> must wait for the expected messages (Camel's
+    /// <c>resultMinimumWaitTime</c>): the assertion fails when they arrive sooner (counted from the call). Zero (default) disables the check.
+    /// </summary>
+    public TimeSpan ResultMinimumWaitTime { get; set; } = TimeSpan.Zero;
 
     /// <summary>Simulated processing delay per message.</summary>
     public TimeSpan? Delay { get; set; }
@@ -239,6 +246,159 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
         return this;
     }
 
+    /// <summary>
+    /// Fluent expectations on message <paramref name="index"/> (0-based):
+    /// <c>mock.Message(0).Header("type").IsEqualTo("order").Body&lt;int&gt;().IsGreaterThan(0)</c>.
+    /// </summary>
+    /// <param name="index">The message index.</param>
+    /// <returns>The assertion clause.</returns>
+    public MockAssertionClause Message(int index)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        return new MockAssertionClause(this, index);
+    }
+
+    /// <summary>Fluent expectations every received message must meet: <c>mock.AllMessages().Header("tenant").IsNotNull()</c>.</summary>
+    /// <returns>The assertion clause.</returns>
+    public MockAssertionClause AllMessages() => new(this, null);
+
+    /// <summary>Fluent expectations on the body of every received message: <c>mock.ExpectedBodyReceived().IsEqualTo("Hello")</c>.</summary>
+    /// <returns>The value clause.</returns>
+    public MockValueClause ExpectedBodyReceived() => AllMessages().Body();
+
+    /// <summary>Expects exactly as many messages as predicates, message <c>i</c> matching predicate <c>i</c>.</summary>
+    /// <param name="predicates">One predicate per expected message.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ExpectedMessagesMatches(params IPredicate[] predicates)
+    {
+        ExpectedMessageCount(predicates.Length);
+        for (var i = 0; i < predicates.Length; i++)
+        {
+            Message(i).Matches(predicates[i]);
+        }
+
+        return this;
+    }
+
+    /// <summary>Expects exactly as many messages as predicates, message <c>i</c> matching predicate <c>i</c>.</summary>
+    /// <param name="predicates">One predicate per expected message.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ExpectedMessagesMatches(params Func<Exchange, bool>[] predicates) =>
+        ExpectedMessagesMatches([.. predicates.Select((p, i) => Pred.From(p, $"predicate {i}"))]);
+
+    /// <summary>Expects the values of <paramref name="expression"/> over the received messages to be in ascending order (equal values allowed).</summary>
+    /// <param name="expression">Computes the value to order by.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ExpectsAscending(IExpression expression) => ExpectsSorted(expression.Evaluate, expression.ToString(), ascending: true);
+
+    /// <summary>Expects the values of <paramref name="expression"/> over the received messages to be in ascending order (equal values allowed).</summary>
+    /// <param name="expression">Computes the value to order by.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ExpectsAscending(Func<Exchange, object?> expression) => ExpectsSorted(expression, "expression", ascending: true);
+
+    /// <summary>Expects the values of <paramref name="expression"/> over the received messages to be in descending order (equal values allowed).</summary>
+    /// <param name="expression">Computes the value to order by.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ExpectsDescending(IExpression expression) => ExpectsSorted(expression.Evaluate, expression.ToString(), ascending: false);
+
+    /// <summary>Expects the values of <paramref name="expression"/> over the received messages to be in descending order (equal values allowed).</summary>
+    /// <param name="expression">Computes the value to order by.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ExpectsDescending(Func<Exchange, object?> expression) => ExpectsSorted(expression, "expression", ascending: false);
+
+    /// <summary>Expects no two received messages to have the same value of <paramref name="expression"/>.</summary>
+    /// <param name="expression">Computes the key.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ExpectsNoDuplicates(IExpression expression) => ExpectsNoDuplicates(expression.Evaluate, expression.ToString());
+
+    /// <summary>Expects no two received messages to have the same value of <paramref name="expression"/>.</summary>
+    /// <param name="expression">Computes the key.</param>
+    /// <param name="description">Describes the key in failure messages.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ExpectsNoDuplicates(Func<Exchange, object?> expression, string? description = null) =>
+        Expect(m =>
+        {
+            var seen = new Dictionary<object, int>();
+            var received = m.ReceivedExchanges;
+            for (var i = 0; i < received.Count; i++)
+            {
+                var key = expression(received[i]);
+                if (key is null)
+                {
+                    continue;
+                }
+
+                if (seen.TryGetValue(key, out var first))
+                {
+                    return $"Duplicate message found on message {i} (same as message {first}) with {description ?? "key"} <{key}>";
+                }
+
+                seen[key] = i;
+            }
+
+            return null;
+        });
+
+    /// <summary>Expects no two received messages to have the same body.</summary>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ExpectsNoDuplicateBodies() => ExpectsNoDuplicates(e => e.Message.Body, "body");
+
+    /// <summary>Expects every received message to have been sent with <paramref name="pattern"/>.</summary>
+    /// <param name="pattern">The expected exchange pattern.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ExpectedExchangePattern(ExchangePattern pattern) =>
+        AllMessages(e => e.Pattern == pattern, $"exchange pattern {pattern}");
+
+    /// <summary>Expects these values for an exchange property, one per message, in any order.</summary>
+    /// <param name="name">The property name.</param>
+    /// <param name="values">The expected values.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ExpectedPropertyValuesReceivedInAnyOrder(string name, params object?[] values)
+    {
+        ExpectedMessageCount(values.Length);
+        Expect(m =>
+        {
+            var remaining = m.ReceivedExchanges.ToList();
+            foreach (var value in values)
+            {
+                var index = remaining.FindIndex(e => ValueEquals(e, e.GetProperty(name), value));
+                if (index < 0)
+                {
+                    return $"Expected property {name} value <{value}> was not received. Received: " +
+                        $"[{string.Join(", ", m.ReceivedExchanges.Select(e => e.GetProperty(name)))}]";
+                }
+
+                remaining.RemoveAt(index);
+            }
+
+            return null;
+        });
+        return this;
+    }
+
+    /// <summary>
+    /// Adds an assertion run when the mock is asserted (Camel's <c>expects(Runnable)</c>): it fails the assertion by throwing, e.g. with your
+    /// test framework's asserts.
+    /// </summary>
+    /// <param name="assertion">The assertion.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint Expects(Action assertion)
+    {
+        ArgumentNullException.ThrowIfNull(assertion);
+        return Expect(_ =>
+        {
+            try
+            {
+                assertion();
+                return null;
+            }
+            catch (Exception e)
+            {
+                return $"Assertion failed: {e.Message}";
+            }
+        });
+    }
+
     /// <summary>Adds a custom expectation: return null when satisfied or an error message.</summary>
     public MockEndpoint Expect(Func<MockEndpoint, string?> expectation)
     {
@@ -273,9 +433,60 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
         return this;
     }
 
-    /// <summary>Sets the reply body for every exchange.</summary>
-    public MockEndpoint ReturnReplyBody(Func<Exchange, object?> body) =>
-        WhenAnyExchangeReceived(e => e.Message.Body = body(e));
+    /// <summary>Sets the reply body of every exchange (after the processors set with <see cref="WhenAnyExchangeReceived(Action{Exchange})"/>).</summary>
+    public MockEndpoint ReturnReplyBody(Func<Exchange, object?> body)
+    {
+        lock (_lock)
+        {
+            _replyActions.Add(e => e.Message.Body = body(e));
+        }
+
+        return this;
+    }
+
+    /// <summary>Sets the reply body of every exchange to the value of <paramref name="body"/>.</summary>
+    /// <param name="body">Computes the reply body.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ReturnReplyBody(IExpression body) => ReturnReplyBody(body.Evaluate);
+
+    /// <summary>Sets a reply header on every exchange (after the processors set with <see cref="WhenAnyExchangeReceived(Action{Exchange})"/>).</summary>
+    /// <param name="name">The header name.</param>
+    /// <param name="value">Computes the header value.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ReturnReplyHeader(string name, Func<Exchange, object?> value)
+    {
+        lock (_lock)
+        {
+            _replyActions.Add(e => e.Message.SetHeader(name, value(e)));
+        }
+
+        return this;
+    }
+
+    /// <summary>Sets a reply header on every exchange to the value of <paramref name="value"/>.</summary>
+    /// <param name="name">The header name.</param>
+    /// <param name="value">Computes the header value.</param>
+    /// <returns>This endpoint.</returns>
+    public MockEndpoint ReturnReplyHeader(string name, IExpression value) => ReturnReplyHeader(name, value.Evaluate);
+
+    /// <summary>The retained exchanges (Camel's <c>getExchanges()</c>).</summary>
+    /// <returns>Copies of the received exchanges, in arrival order.</returns>
+    public IReadOnlyList<Exchange> GetExchanges() => ReceivedExchanges;
+
+    /// <summary>Returns the retained exchange at <paramref name="index"/> (0-based), failing when it was not received.</summary>
+    /// <param name="index">The message index.</param>
+    /// <returns>A copy of the received exchange.</returns>
+    /// <exception cref="MockAssertionException">Fewer messages were received.</exception>
+    public Exchange AssertExchangeReceived(int index)
+    {
+        var received = ReceivedExchanges;
+        if (index < 0 || index >= received.Count)
+        {
+            throw new MockAssertionException($"{EndpointUri}: expected to have received exchange {index} but only {received.Count} were received");
+        }
+
+        return received[index];
+    }
 
     // ----- Assertions -----
 
@@ -328,6 +539,7 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
             _expectations.Clear();
             _processorsByIndex.Clear();
             _defaultProcessor = null;
+            _replyActions.Clear();
             _receivedCounter = 0;
             _expectedCount = -1;
             _expectedMinimumCount = -1;
@@ -342,6 +554,7 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
         var wait = timeout ?? ResultWaitTime;
         if (_expectedCount > 0 || _expectedMinimumCount > 0)
         {
+            var started = System.Diagnostics.Stopwatch.GetTimestamp();
             try
             {
                 Task countReached;
@@ -355,6 +568,13 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
             catch (TimeoutException)
             {
                 // fall through to the checks
+            }
+
+            var waited = System.Diagnostics.Stopwatch.GetElapsedTime(started);
+            if (ResultMinimumWaitTime > TimeSpan.Zero && waited < ResultMinimumWaitTime)
+            {
+                return $"Expected a minimum of {ResultMinimumWaitTime.TotalMilliseconds} ms waiting on the result, but was faster with " +
+                    $"{waited.TotalMilliseconds:0.###} ms";
             }
         }
 
@@ -408,6 +628,17 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
             {
                 await processor.ProcessAsync(exchange).ConfigureAwait(false);
             }
+
+            Action<Exchange>[] replies;
+            lock (_lock)
+            {
+                replies = [.. _replyActions];
+            }
+
+            foreach (var reply in replies)
+            {
+                reply(exchange);
+            }
         }
         finally
         {
@@ -447,6 +678,25 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
             }
         }
     }
+
+    private MockEndpoint ExpectsSorted(Func<Exchange, object?> expression, string? description, bool ascending) =>
+        Expect(m =>
+        {
+            var received = m.ReceivedExchanges;
+            for (var i = 1; i < received.Count; i++)
+            {
+                var previous = expression(received[i - 1]);
+                var current = expression(received[i]);
+                var comparison = ObjectHelper.TypeCoerceCompare(received[i], previous, current);
+                if (ascending ? comparison > 0 : comparison < 0)
+                {
+                    return $"Messages not {(ascending ? "ascending" : "descending")} by {description ?? "expression"}: message {i - 1} has " +
+                        $"<{previous}> and message {i} has <{current}>";
+                }
+            }
+
+            return null;
+        });
 
     private static bool BodyEquals(Exchange exchange, object? expected)
     {

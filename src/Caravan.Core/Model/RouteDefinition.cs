@@ -55,6 +55,21 @@ public sealed class RouteDefinition
     /// <summary>The <c>onCompletion</c> blocks of the route: its own, or its route builder's when it has none.</summary>
     public List<OnCompletionDefinition> OnCompletions { get; } = [];
 
+    /// <summary>
+    /// The <c>intercept</c> blocks applying to the route (run before each of its nodes): its route builder's, and those added by
+    /// route configurations or advice.
+    /// </summary>
+    public List<InterceptDefinition> Intercepts { get; } = [];
+
+    /// <summary>The <c>interceptFrom</c> blocks applying to the route (run when an exchange enters it, if its endpoint matches).</summary>
+    public List<InterceptFromDefinition> InterceptFroms { get; } = [];
+
+    /// <summary>
+    /// The <c>interceptSendToEndpoint</c> definitions brought by the route: they are registered with the context (and then apply to every
+    /// send in it) when the route is created.
+    /// </summary>
+    public List<InterceptSendToEndpointDefinition> InterceptSendToEndpoints { get; } = [];
+
     /// <summary>Feature-specific configuration attached to the route (error handler, route policies, ...).</summary>
     public Dictionary<Type, object> Extensions { get; } = [];
 
