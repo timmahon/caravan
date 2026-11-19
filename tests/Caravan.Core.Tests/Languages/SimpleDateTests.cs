@@ -88,7 +88,7 @@ public class SimpleDateTests : SimpleTestBase
 
     [Theory]
     [InlineData("${date:}")]
-    [InlineData("${date:file:yyyy}")]
+    [InlineData("${date:messageTimestamp:yyyy}")]
     [InlineData("${date:tomorrow}")]
     [InlineData("${date:now:yyyy-MM-dd qq}")]
     [InlineData("${date:now-1y:yyyy}")]

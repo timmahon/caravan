@@ -6,6 +6,7 @@ using Caravan.Components.ControlBus;
 using Caravan.Components.DataFormat;
 using Caravan.Components.DataSet;
 using Caravan.Components.Direct;
+using Caravan.Components.File;
 using Caravan.Components.Kamelet;
 using Caravan.Components.Log;
 using Caravan.Components.Mock;
@@ -80,6 +81,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         RegisterGlobalComponent("dataset-test", () => new DataSetTestComponent());
         RegisterGlobalComponent("browse", () => new BrowseComponent());
         RegisterGlobalComponent("kamelet", () => new KameletComponent());
+        RegisterGlobalComponent("file", () => new FileComponent());
     }
 
     /// <summary>Creates a context.</summary>

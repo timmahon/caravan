@@ -4,7 +4,7 @@ namespace Caravan.Language.Simple;
 
 /// <summary>
 /// <c>${date:command[:pattern]}</c> and <c>${date-with-timezone:command:timezone:pattern}</c>. Commands: <c>now</c>, <c>millis</c>,
-/// <c>exchangeCreated</c>, <c>header.name</c>, <c>exchangeProperty.name</c>, each with optional offsets (<c>now-1h30m</c>,
+/// <c>exchangeCreated</c>, <c>file</c> (the <c>CaravanFileLastModified</c> header), <c>header.name</c>, <c>exchangeProperty.name</c>, each with optional offsets (<c>now-1h30m</c>,
 /// <c>header.due+2d</c>; units <c>d h m s ms</c>, no unit = milliseconds). Without a pattern the value is a <see cref="DateTimeOffset"/>
 /// (<c>millis</c>: Unix milliseconds); with one it is formatted (<see cref="JavaDateFormat"/>) in the context's
 /// <see cref="TimeProvider.LocalTimeZone"/> or the given time zone.
@@ -88,7 +88,9 @@ internal static class SimpleDateFunction
                 return e => e.Context.TimeProvider.GetUtcNow();
             case "exchangeCreated":
                 return e => e.Created;
-            case "file" or "messageTimestamp":
+            case "file":
+                return e => ToDate(e, e.Message.GetHeader(CaravanHeaders.FileLastModified), function);
+            case "messageTimestamp":
                 throw new SimpleParseException($"Command not supported for dateExpression: {command} (no Caravan equivalent)", expression, index);
         }
 

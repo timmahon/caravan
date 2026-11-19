@@ -132,6 +132,8 @@ public sealed class TypeConverterRegistry : ITypeConverter
         AddConverter<string, DateTime>(s => DateTime.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
         AddConverter<string, bool>(ParseBool);
         AddConverter<string, char>(s => s.Length == 1 ? s[0] : throw new FormatException($"'{s}' is not a single character"));
+        AddConverter<string, Microsoft.Extensions.Logging.LogLevel>(ParseLogLevel);
+        RegisterFileConverters();
         AddConverter<string, Type>(s => Language.Simple.TypeNameResolver.Resolve(s) ?? throw new FormatException($"Unknown type: {s}"));
     }
 
@@ -253,6 +255,49 @@ public sealed class TypeConverterRegistry : ITypeConverter
         using var buffer = new MemoryStream();
         stream.CopyTo(buffer);
         return buffer.ToArray();
+    }
+
+    // Camel's level names (TRACE, DEBUG, INFO, WARN, ERROR, OFF) as well as the LogLevel names.
+    private static Microsoft.Extensions.Logging.LogLevel ParseLogLevel(string s) => s.Trim().ToUpperInvariant() switch
+    {
+        "TRACE" => Microsoft.Extensions.Logging.LogLevel.Trace,
+        "DEBUG" => Microsoft.Extensions.Logging.LogLevel.Debug,
+        "INFO" or "INFORMATION" => Microsoft.Extensions.Logging.LogLevel.Information,
+        "WARN" or "WARNING" => Microsoft.Extensions.Logging.LogLevel.Warning,
+        "ERROR" => Microsoft.Extensions.Logging.LogLevel.Error,
+        "CRITICAL" or "FATAL" => Microsoft.Extensions.Logging.LogLevel.Critical,
+        "OFF" or "NONE" => Microsoft.Extensions.Logging.LogLevel.None,
+        _ => Enum.Parse<Microsoft.Extensions.Logging.LogLevel>(s.Trim(), ignoreCase: true),
+    };
+
+    // A consumed file (GenericFile) is read only when converted: to a stream (opened), bytes, text (in its charset) or its FileInfo.
+    private void RegisterFileConverters()
+    {
+        var file = typeof(Components.File.IGenericFile);
+        AddConverter(file, typeof(Stream), (object v, Exchange? _, out object? r) =>
+        {
+            r = ((Components.File.IGenericFile)v).OpenRead();
+            return true;
+        });
+        AddConverter(file, typeof(byte[]), (object v, Exchange? _, out object? r) =>
+        {
+            using var stream = ((Components.File.IGenericFile)v).OpenRead();
+            r = ReadAllBytes(stream);
+            return true;
+        });
+        AddConverter(file, typeof(string), (object v, Exchange? e, out object? r) =>
+        {
+            var genericFile = (Components.File.IGenericFile)v;
+            var charset = genericFile.Charset ?? e?.GetProperty<string>(ExchangePropertyKeys.CharsetName);
+            using var reader = new StreamReader(genericFile.OpenRead(), charset is null ? Encoding.UTF8 : Encoding.GetEncoding(charset), detectEncodingFromByteOrderMarks: true);
+            r = reader.ReadToEnd();
+            return true;
+        });
+        AddConverter(file, typeof(FileInfo), (object v, Exchange? _, out object? r) =>
+        {
+            r = ((Components.File.IGenericFile)v).FileObject as FileInfo;
+            return r is not null;
+        });
     }
 
     private static bool ParseBool(string s) => s.Trim().ToLowerInvariant() switch
