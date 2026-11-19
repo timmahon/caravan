@@ -185,6 +185,7 @@ internal static class RoutingSteps
                 Opt.Ref("onPrepare", "A processor preparing the copy").Alias("onPrepareRef"),
                 Opt.Int("cacheSize", "Size of the cache of producers."),
                 Opt.Bool("ignoreInvalidEndpoint", "Ignores URIs that do not resolve to an endpoint."),
+                Opt.Str("variableSend", "A variable whose value the tap sends as the body."),
                 Opt.Ignored("dynamicUri", OptionKind.Boolean, "the URI is always a Simple expression"),
                 Opt.Ignored("executorService", OptionKind.String, "the tap runs on the thread pool"),
                 Opt.Ignored("allowOptimisedComponents", OptionKind.Boolean, "no optimised components"),
@@ -197,6 +198,7 @@ internal static class RoutingSteps
                 tap.Copy = o.Bool("copy") ?? tap.Copy;
                 tap.CacheSize = o.Int("cacheSize") ?? tap.CacheSize;
                 tap.IgnoreInvalidEndpoint = o.Bool("ignoreInvalidEndpoint") ?? false;
+                tap.VariableSend = o.String("variableSend");
                 tap.OnPrepare = o.String("onPrepare") is { } prepare ? RegistryRefs.OnPrepare(prepare) : null;
                 return tap;
             },

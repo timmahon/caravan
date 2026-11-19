@@ -1,7 +1,28 @@
 # Caravan
 
-A reimagining of [Apache Camel](https://camel.apache.org) for .NET: an integration framework built around
-the Enterprise Integration Patterns, with routes defined in a fluent C# DSL.
+A reimagining of [Apache Camel](https://camel.apache.org) for .NET 10: an integration framework built around the
+[Enterprise Integration Patterns](https://www.enterpriseintegrationpatterns.com), with routes written in a fluent C# DSL or in Camel's YAML DSL.
+Caravan keeps Camel's model — a context, endpoints and components, exchanges flowing through routes of EIPs, error handlers, route templates,
+a test kit — and its semantics, on .NET's own foundations: `async`/`ValueTask` processors, `System.Threading.Channels`, the Generic Host and
+dependency injection, `IConfiguration`, `TimeProvider`, Polly and OpenTelemetry.
+
+The goal of the first release is **parity with Camel core**; [docs/PARITY.md](docs/PARITY.md) is the feature-by-feature record (219 rows:
+171 at parity, 12 partial, 14 missing, 22 not applicable on .NET). Connectors to external systems will be built on the same component SPI.
+
+## Packages
+
+| Package | What it brings |
+|---|---|
+| `Caravan.Core` | The routing engine, every EIP, the core components (`direct`, `seda`, `vm`, `timer`, `scheduler`, `file`, `log`, `mock`, `bean`, `kamelet`, `rest`, `language`, ...), Simple and the other core languages, data formats, error handling, route templates, variables, route policies, data type transformers, management, health and telemetry. |
+| `Caravan.Dsl.Yaml` | Camel's YAML DSL: routes, templates, configurations, REST and beans from YAML files, strict errors with line numbers, JSON schema, hot reload. |
+| `Caravan.Hosting` | The Generic Host: `AddCaravan()`, route builders from DI, options from configuration, graceful start/stop, health checks, YAML loading. |
+| `Caravan.AspNetCore` | `platform-http` and the REST DSL on ASP.NET Core endpoint routing, OpenAPI documents, health and management endpoints. |
+| `Caravan.OpenTelemetry` | `AddCaravanInstrumentation()` for OpenTelemetry tracer and meter providers. |
+| `Caravan.Testing` | The test kit: `CaravanTestSupport`, `AdviceWith`, endpoint mocking, `NotifyBuilder` (no test-framework dependency). |
+
+`dotnet pack -c Release` produces all six packages (`0.1.0-preview`).
+
+## Quick start (C#)
 
 ```csharp
 using static Caravan.Builder.Lang;
@@ -174,18 +195,44 @@ public sealed class OrderRoutesTests : CaravanTestSupport, IAsyncLifetime
 }
 ```
 
-## Status
+## Camel 4 features: variables, route policies, data types
 
-Early development. See [docs/ROADMAP.md](docs/ROADMAP.md) for the plan to reach parity with Camel core,
-and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the core is put together.
+```csharp
+From("direct:quote")
+    .InputType("json:QuoteRequest", validate: true)              // data type contract: transformers + validators of the context
+    .SetVariable("customer", Simple("${body.CustomerId}"))        // exchange variables (also global:x, route:x)
+    .ToV("direct:pricing", variableSend: null, variableReceive: "price")   // reply kept in a variable, message untouched
+    .RoutePolicy(new ThrottlingExceptionRoutePolicy { FailureThreshold = 5, HalfOpenAfter = TimeSpan.FromSeconds(30) })
+    .Threads(poolSize: 4)                                          // the rest of the route runs on a bounded pool
+    .SetBody(Simple("${variable.customer}: ${variable.price}"));
+```
+
+## Samples
+
+| Sample | Shows |
+|---|---|
+| [`samples/Caravan.Samples.Orders`](samples/Caravan.Samples.Orders) | Console app on the Generic Host: timer → split → choice → seda → log, a dead letter channel and `onException`. |
+| [`samples/Caravan.Samples.WebApi`](samples/Caravan.Samples.WebApi) | ASP.NET Core minimal API: REST DSL in C# and YAML, health checks, OpenAPI, management, OpenTelemetry. |
+| [`samples/Caravan.Samples.FileBatch`](samples/Caravan.Samples.FileBatch) | File polling and the aggregator: each poll's CSV files become one report. |
+
+`dotnet run --project samples/Caravan.Samples.Orders`; `tests/Caravan.Samples.Tests` runs each sample's routes in the test suite.
+
+## Documentation and status
+
+- [docs/PARITY.md](docs/PARITY.md) — what matches Camel core, what is partial or missing, and why.
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the core is put together, every feature's semantics and its documented deviations.
+- [docs/ROADMAP.md](docs/ROADMAP.md) — the 17 stacked PRs that built Caravan (complete).
+
+Status: **preview**. The core is feature-complete against the roadmap and covered by about 1,700 tests; APIs may still change before 1.0.
 
 ## Build
 
 Requires the .NET 10 SDK.
 
 ```bash
-dotnet build
-dotnet test
+dotnet build -c Release      # warnings are errors
+dotnet test -c Release
+dotnet pack -c Release       # the six packages
 ```
 
 ## License

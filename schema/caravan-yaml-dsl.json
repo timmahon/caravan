@@ -12498,6 +12498,14 @@
               ],
               "description": "Ignores URIs that do not resolve to an endpoint."
             },
+            "variableSend": {
+              "type": [
+                "string",
+                "number",
+                "boolean"
+              ],
+              "description": "A variable whose value the tap sends as the body."
+            },
             "dynamicUri": {
               "type": [
                 "boolean",

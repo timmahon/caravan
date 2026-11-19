@@ -28,6 +28,7 @@ public class ParityFeatureTests : YamlTestBase
                   - to: { uri: direct:service, variableSend: a, variableReceive: reply }
                   - toD: { uri: "direct:${variable.a}", variableReceive: d }
                   - enrich: { uri: direct:service, variableSend: b, variableReceive: e }
+                  - wireTap: { uri: mock:tap, variableSend: a }
                   - removeVariable: input*
                   - setBody: { simple: "${variable.reply}|${variable.d}|${variable.e}|${variable.b}|${variableAs(b,int)}" }
                   - setHeader: { name: lang, variable: global:seen }
@@ -42,6 +43,7 @@ public class ParityFeatureTests : YamlTestBase
                   - setBody: { constant: unused }
             """);
 
+        Mock("tap").ExpectedMessageCount(1);
         await Template.SendBodyAsync("direct:start", "service2");
 
         var exchange = Assert.Single(Mock("result").ReceivedExchanges);
@@ -49,6 +51,8 @@ public class ParityFeatureTests : YamlTestBase
         Assert.Equal("yes", exchange.Message.GetHeader("lang"));
         Assert.Null(exchange.GetVariable("input"));
         Assert.Equal("yes", Context.GetVariable("seen"));
+        await Mock("tap").AssertIsSatisfiedAsync();
+        Assert.Equal(["service2"], Mock("tap").ReceivedBodies);
     }
 
     [Fact]

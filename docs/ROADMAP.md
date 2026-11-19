@@ -1,5 +1,8 @@
 # Caravan roadmap
 
+> **Status: complete.** All 17 PRs below are merged. What remains to reach full Camel-core parity — and what is deliberately not
+> applicable on .NET — is tracked row by row in [PARITY.md](PARITY.md); connectors come next, on the same component SPI.
+
 Caravan is a reimagining of [Apache Camel](https://camel.apache.org) for .NET.
 The goal of this roadmap is **parity with Camel core**: the routing engine, the
 Enterprise Integration Patterns (EIPs), error handling, the core components
@@ -50,4 +53,4 @@ Conventions:
 | 14 | **YAML DSL** | YAML route loader covering all EIPs, JSON schema generation. |
 | 15 | **File component** | `file` consumer/producer: polling, include/exclude, move/delete/noop, idempotent, read locks, file name expressions, append/override strategies. |
 | 16 | **REST DSL** | REST DSL on ASP.NET Core, `platform-http` component, binding modes. |
-| 17 | **Parity audit** | `docs/PARITY.md` feature matrix against Camel core, samples, gaps closed. |
+| 17 | **Parity audit** | `docs/PARITY.md` feature matrix against Camel core; gaps closed: Camel 4 variables (`setVariable(s)`, `removeVariable`, `convertVariableTo`, `variableSend`/`variableReceive`, `${variable.x}`, `variable` language), route policies (`ThrottlingInflightRoutePolicy`, `ThrottlingExceptionRoutePolicy`), `threads` and `poll` EIPs, route `precondition` and `nodePrefixId`, data type transformers/validators with `inputType`/`outputType` and `transform` `toType`, consuming from Kamelets, the `language` component, `${messageTimestamp}`; samples; NuGet packaging. |

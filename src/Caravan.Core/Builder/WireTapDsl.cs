@@ -18,8 +18,9 @@ public static class WireTapDsl
     /// <param name="onPrepare">Optional callback to modify the tapped exchange before it is sent.</param>
     /// <param name="cacheSize">Maximum cached producers (default 1000; negative disables caching).</param>
     /// <param name="ignoreInvalidEndpoint">Skip the tap when the URI cannot be resolved.</param>
-    public static T WireTap<T>(this T steps, string uri, bool copy = true, Action<Exchange>? onPrepare = null, int cacheSize = SendDynamicProcessor.DefaultCacheSize, bool ignoreInvalidEndpoint = false)
-        where T : RouteSteps => steps.WireTap(SimpleLanguage.Expression(uri), copy, onPrepare, cacheSize, ignoreInvalidEndpoint);
+    /// <param name="variableSend">The variable sent as the tapped body instead of the message body (Camel's <c>variableSend</c>).</param>
+    public static T WireTap<T>(this T steps, string uri, bool copy = true, Action<Exchange>? onPrepare = null, int cacheSize = SendDynamicProcessor.DefaultCacheSize, bool ignoreInvalidEndpoint = false, string? variableSend = null)
+        where T : RouteSteps => steps.WireTap(SimpleLanguage.Expression(uri), copy, onPrepare, cacheSize, ignoreInvalidEndpoint, variableSend);
 
     /// <summary>Wire taps to the URI computed by <paramref name="uri"/> on the tapped exchange.</summary>
     /// <param name="steps">The block to add to.</param>
@@ -28,7 +29,8 @@ public static class WireTapDsl
     /// <param name="onPrepare">Optional callback to modify the tapped exchange before it is sent.</param>
     /// <param name="cacheSize">Maximum cached producers (default 1000; negative disables caching).</param>
     /// <param name="ignoreInvalidEndpoint">Skip the tap when the URI cannot be resolved.</param>
-    public static T WireTap<T>(this T steps, IExpression uri, bool copy = true, Action<Exchange>? onPrepare = null, int cacheSize = SendDynamicProcessor.DefaultCacheSize, bool ignoreInvalidEndpoint = false)
+    /// <param name="variableSend">The variable sent as the tapped body instead of the message body (Camel's <c>variableSend</c>).</param>
+    public static T WireTap<T>(this T steps, IExpression uri, bool copy = true, Action<Exchange>? onPrepare = null, int cacheSize = SendDynamicProcessor.DefaultCacheSize, bool ignoreInvalidEndpoint = false, string? variableSend = null)
         where T : RouteSteps
     {
         steps.AddStep(new WireTapDefinition(uri)
@@ -37,6 +39,7 @@ public static class WireTapDsl
             OnPrepare = onPrepare,
             CacheSize = cacheSize,
             IgnoreInvalidEndpoint = ignoreInvalidEndpoint,
+            VariableSend = variableSend,
         });
         return steps;
     }
@@ -48,6 +51,7 @@ public static class WireTapDsl
     /// <param name="onPrepare">Optional callback to modify the tapped exchange before it is sent.</param>
     /// <param name="cacheSize">Maximum cached producers (default 1000; negative disables caching).</param>
     /// <param name="ignoreInvalidEndpoint">Skip the tap when the URI cannot be resolved.</param>
-    public static T WireTap<T>(this T steps, Func<Exchange, string> uri, bool copy = true, Action<Exchange>? onPrepare = null, int cacheSize = SendDynamicProcessor.DefaultCacheSize, bool ignoreInvalidEndpoint = false)
-        where T : RouteSteps => steps.WireTap(new FuncExpression(uri), copy, onPrepare, cacheSize, ignoreInvalidEndpoint);
+    /// <param name="variableSend">The variable sent as the tapped body instead of the message body (Camel's <c>variableSend</c>).</param>
+    public static T WireTap<T>(this T steps, Func<Exchange, string> uri, bool copy = true, Action<Exchange>? onPrepare = null, int cacheSize = SendDynamicProcessor.DefaultCacheSize, bool ignoreInvalidEndpoint = false, string? variableSend = null)
+        where T : RouteSteps => steps.WireTap(new FuncExpression(uri), copy, onPrepare, cacheSize, ignoreInvalidEndpoint, variableSend);
 }

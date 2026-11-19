@@ -21,6 +21,9 @@ public sealed class WireTapDefinition(IExpression uri) : ProcessorDefinition
     /// <summary>Whether an unresolvable URI is skipped instead of logged as a failed tap.</summary>
     public bool IgnoreInvalidEndpoint { get; set; }
 
+    /// <summary>The variable whose value the tap sends as the body (Camel's <c>variableSend</c>); null sends the message body.</summary>
+    public string? VariableSend { get; set; }
+
     /// <inheritdoc />
     public override string ShortName => "wireTap";
 
@@ -29,5 +32,5 @@ public sealed class WireTapDefinition(IExpression uri) : ProcessorDefinition
 
     /// <inheritdoc />
     public override IProcessor CreateProcessor(RouteContext routeContext) =>
-        new WireTapProcessor(new SendDynamicProcessor(Uri, ExchangePattern.InOnly, CacheSize, IgnoreInvalidEndpoint), Copy, OnPrepare);
+        new WireTapProcessor(new SendDynamicProcessor(Uri, ExchangePattern.InOnly, CacheSize, IgnoreInvalidEndpoint) { VariableSend = VariableSend }, Copy, OnPrepare);
 }

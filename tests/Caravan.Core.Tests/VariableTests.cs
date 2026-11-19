@@ -326,4 +326,19 @@ public class VariableTests : ContextTestBase
 
         Assert.True(Mock("result").GetReceivedBodies<long>()[0] > 0);
     }
+
+    [Fact]
+    public async Task Wire_tap_can_send_a_variable()
+    {
+        await StartWithRoutes(b => b.From("direct:start")
+            .SetVariable("audit", Simple("audit of ${body}"))
+            .WireTap("mock:tap", variableSend: "audit")
+            .To("mock:result"));
+        Mock("tap").ExpectedBodiesReceived("audit of x");
+
+        await Template.SendBodyAsync("direct:start", "x");
+
+        await Mock("tap").AssertIsSatisfiedAsync();
+        Assert.Equal(["x"], Mock("result").ReceivedBodies);
+    }
 }

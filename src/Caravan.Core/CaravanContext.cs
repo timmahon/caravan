@@ -84,6 +84,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         RegisterGlobalComponent("kamelet", () => new KameletComponent());
         RegisterGlobalComponent("file", () => new FileComponent());
         RegisterGlobalComponent("rest", () => new RestComponent());
+        RegisterGlobalComponent("language", () => new Components.Languages.LanguageComponent());
     }
 
     /// <summary>Creates a context.</summary>
