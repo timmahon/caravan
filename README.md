@@ -30,6 +30,44 @@ Expressions can be C# lambdas or Camel's [Simple language](docs/ARCHITECTURE.md#
 (`${header.x}`, operators, OGNL, `${date:...}`, ternary/elvis), compiled once and cached; property placeholders (`{{key}}`) resolve from
 `IConfiguration`, dictionaries or environment variables.
 
+## YAML routes
+
+`Caravan.Dsl.Yaml` loads routes written in [Camel's YAML DSL](https://camel.apache.org/components/latest/others/yaml-dsl.html), so
+existing Camel YAML files mostly load unchanged: every EIP, route templates, `templatedRoute`, `routeConfiguration`, `beans`, error
+handlers and interceptors, validated strictly (unknown steps or options fail with the file, line and column) and described by a JSON schema
+([`schema/caravan-yaml-dsl.json`](schema/caravan-yaml-dsl.json)).
+
+```yaml
+# routes/orders.yaml
+- beans:
+    - name: totals
+      type: MyApp.TotalsAggregator, MyApp
+- route:
+    id: orders
+    from:
+      uri: direct:orders
+      steps:
+        - setHeader: { name: received, constant: "true" }
+        - choice:
+            when:
+              - simple: "${body.Total} > {{orders.threshold:100}}"
+                steps:
+                  - to: { uri: "seda:big", parameters: { size: 1000 } }
+            otherwise:
+              steps: [ { to: "seda:small" } ]
+        - split:
+            tokenize: ","
+            aggregationStrategy: totals
+            parallelProcessing: true
+            steps: [ { to: "direct:line" } ]
+```
+
+```csharp
+context.AddRoutes(YamlRoutesBuilder.FromFile("routes/orders.yaml"));         // or FromString / FromStream
+new RoutesLoader(context, new() { Watch = true }).Load("routes/**/*.yaml");   // a directory or glob, reloading changed files
+builder.Services.AddCaravan().AddYamlRoutes("routes/*.yaml");                // Caravan.Hosting
+```
+
 ## Hosting and observability
 
 `Caravan.Hosting` runs a context in the .NET Generic Host: route builders come from dependency injection, options from the `Caravan`

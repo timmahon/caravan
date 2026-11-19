@@ -1,0 +1,27 @@
+# Beans, split with tokenize, aggregate with kebab-case options (Camel accepts both).
+- beans:
+    - name: joiner
+      type: "#class:Caravan.Aggregation.StringAggregationStrategy"
+      constructors:
+        0: "+"
+- from:
+    uri: "direct:lines"
+    steps:
+      - split:
+          tokenize:
+            token: ","
+          steps:
+            - set-header:
+                name: group
+                simple: "${body.substring(0,1)}"
+            - to: "direct:aggregate"
+- from:
+    uri: "direct:aggregate"
+    steps:
+      - aggregate:
+          correlation-expression:
+            header: group
+          aggregation-strategy: joiner
+          completion-size: 2
+          steps:
+            - to: "mock:aggregated"

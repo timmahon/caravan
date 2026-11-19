@@ -1,0 +1,99 @@
+# Every step of the YAML DSL at least once (loaded, created and validated against the schema by the tests).
+- beans:
+    - name: upper
+      type: Caravan.Dsl.Yaml.Tests.UpperCaseProcessor
+    - name: strategy
+      type: Caravan.Aggregation.UseLatestAggregationStrategy
+    - name: repository
+      type: Caravan.Idempotent.MemoryIdempotentRepository
+- errorHandler:
+    defaultErrorHandler:
+      redeliveryPolicy: { maximumRedeliveries: 0 }
+- routeConfiguration:
+    id: showcase-config
+    onCompletion:
+      - onCompletion: { onFailureOnly: true, steps: [ { log: "failed ${exchangeId}" } ] }
+- route:
+    id: showcase
+    routeConfigurationId: showcase-config
+    from:
+      uri: direct:showcase
+      steps:
+        - onException:
+            exception: [ java.lang.IllegalStateException ]
+            handled: { constant: true }
+        - onCompletion: { steps: [ { log: "done" } ] }
+        - to: { uri: log:showcase, parameters: { level: DEBUG } }
+        - toD: "log:${header.name}"
+        - inOnly: log:in-only
+        - inOut: log:in-out
+        - process: { ref: upper }
+        - bean: { beanType: Caravan.Dsl.Yaml.Tests.Greeter, method: Shout }
+        - setBody: { simple: "${body}" }
+        - transform: { constant: body }
+        - setHeader: { name: h, constant: v }
+        - setHeaders: { headers: [ { name: a, constant: "1" } ] }
+        - setProperty: { name: p, constant: v }
+        - removeHeader: h
+        - removeHeaders: { pattern: "x*" }
+        - removeProperty: p
+        - removeProperties: { pattern: "q*" }
+        - convertBodyTo: String
+        - convertHeaderTo: { name: a, type: int }
+        - log: { message: "${body}", loggingLevel: INFO }
+        - setExchangePattern: InOut
+        - script: { simple: "${body}" }
+        - validate: { simple: "${body} != null" }
+        - filter: { simple: "${body} != null", steps: [ { log: filtered } ] }
+        - choice:
+            when: [ { simple: "${body} == 'x'", steps: [ { log: x } ] } ]
+            otherwise: { steps: [ { log: other } ] }
+        - split: { tokenize: ",", aggregationStrategy: strategy, steps: [ { log: part } ] }
+        - multicast: { steps: [ { log: one }, { log: two } ] }
+        - recipientList: { constant: "log:a,log:b" }
+        - routingSlip: { constant: "log:c" }
+        - dynamicRouter: { simple: "${null}" }
+        - wireTap: log:tap
+        - enrich: { constant: "direct:resource" }
+        - pollEnrich: { constant: "seda:poll", timeout: 0 }
+        - claimCheck: { operation: Set, key: k }
+        - claimCheck: { operation: GetAndRemove, key: k }
+        - pipeline: { steps: [ { log: pipeline } ] }
+        - step: { id: grouped, steps: [ { log: step } ] }
+        - aggregate:
+            correlationExpression: { constant: all }
+            aggregationStrategy: strategy
+            completionSize: 1
+            steps: [ { log: aggregated } ]
+        - setHeader: { name: seq, constant: 1 }
+        - resequence: { header: seq, batchConfig: { batchSize: 1 }, steps: [ { log: resequenced } ] }
+        - loop: { constant: 1, steps: [ { log: loop } ] }
+        - delay: { constant: 0 }
+        - throttle: { constant: 10 }
+        - sample: { samplePeriod: 1ms }
+        - setHeader: { name: id, constant: 1 }
+        - idempotentConsumer: { header: id, idempotentRepository: repository, skipDuplicate: false, steps: [ { log: once } ] }
+        - loadBalance: { roundRobinLoadBalancer: {}, steps: [ { log: lb } ] }
+        - marshal: { json: { prettyPrint: false } }
+        - unmarshal: { json: {} }
+        - doTry:
+            steps: [ { throwException: { exceptionType: java.lang.IllegalArgumentException, message: tried } } ]
+            doCatch: [ { exception: [ java.lang.IllegalArgumentException ], steps: [ { log: caught } ] } ]
+            doFinally: { steps: [ { log: finally } ] }
+        - circuitBreaker:
+            steps: [ { log: protected } ]
+            onFallback: { steps: [ { log: fallback } ] }
+        - saga: { steps: [ { log: saga } ] }
+        - kamelet: "suffix?value=!"
+        - sort: { tokenize: "," }
+        - rollback: { markRollbackOnlyLast: true }
+        - stop: {}
+- routeTemplate:
+    id: suffix
+    parameters: [ { name: value } ]
+    from:
+      uri: kamelet:source
+      steps: [ { setBody: { simple: "${body}{{value}}" } } ]
+- from:
+    uri: direct:resource
+    steps: [ { setBody: { constant: resource } } ]

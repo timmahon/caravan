@@ -1,0 +1,20 @@
+# A route template written like a Kamelet's template: kamelet:source in, kamelet:sink out.
+- routeTemplate:
+    id: prefix-action
+    parameters:
+      - name: prefix
+        description: The text put in front of the body
+        required: true
+    from:
+      uri: "kamelet:source"
+      steps:
+        - setBody:
+            simple: "{{prefix}}${body}"
+        - to: "kamelet:sink"
+- route:
+    id: uses-kamelet
+    from:
+      uri: "direct:kamelet"
+      steps:
+        - to: "kamelet:prefix-action?prefix=Hi%20"
+        - to: "mock:prefixed"

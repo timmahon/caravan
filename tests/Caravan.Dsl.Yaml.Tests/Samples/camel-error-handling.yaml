@@ -1,0 +1,38 @@
+# Route configuration in Camel's shape: nested onException items, a dead letter channel, a route selecting it.
+- routeConfiguration:
+    id: retry-config
+    errorHandler:
+      deadLetterChannel:
+        deadLetterUri: "mock:dead"
+        redeliveryPolicy:
+          maximumRedeliveries: 3
+          redeliveryDelay: 0
+    onException:
+      - onException:
+          handled:
+            constant: true
+          exception:
+            - "java.lang.IllegalArgumentException"
+          steps:
+            - setBody:
+                constant: "invalid input"
+            - to: "mock:invalid"
+- route:
+    id: guarded
+    routeConfigurationId: retry-config
+    from:
+      uri: "direct:guarded"
+      steps:
+        - choice:
+            when:
+              - simple: "${body} == 'bad'"
+                steps:
+                  - throwException:
+                      exceptionType: "java.lang.IllegalArgumentException"
+                      message: "bad input"
+              - simple: "${body} == 'boom'"
+                steps:
+                  - throwException:
+                      exceptionType: "java.lang.IllegalStateException"
+                      message: "boom"
+        - to: "mock:ok"

@@ -571,6 +571,13 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         }
     }
 
+    /// <inheritdoc />
+    public bool RemoveRouteConfiguration(RouteConfigurationDefinition configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        return _routeConfigurations.Remove(configuration);
+    }
+
     /// <summary>Creates (without adding it) the definition of a route from a template.</summary>
     private RouteDefinition CreateRouteDefinitionFromTemplate(string? routeId, string templateId, RouteTemplateContext templateContext)
     {

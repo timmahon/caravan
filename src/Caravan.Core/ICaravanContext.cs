@@ -232,6 +232,13 @@ public interface ICaravanContext : IService, IAsyncDisposable
     /// <param name="configuration">The route configuration.</param>
     void AddRouteConfiguration(RouteConfigurationDefinition configuration);
 
+    /// <summary>
+    /// Removes a route configuration (e.g. when the file defining it is reloaded). Routes already created keep what they took from it.
+    /// </summary>
+    /// <param name="configuration">The route configuration.</param>
+    /// <returns>Whether it was removed.</returns>
+    bool RemoveRouteConfiguration(RouteConfigurationDefinition configuration);
+
     /// <summary>The runtime routes (created when the context starts).</summary>
     IReadOnlyList<IRoute> Routes { get; }
 

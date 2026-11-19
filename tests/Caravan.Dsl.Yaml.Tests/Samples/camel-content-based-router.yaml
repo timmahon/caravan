@@ -1,0 +1,23 @@
+# Content based router in the Camel 3 shape (expression wrappers) mixed with the Camel 4 short form.
+- from:
+    uri: "direct:orders"
+    steps:
+      - choice:
+          when:
+            - expression:
+                simple:
+                  expression: "${header.type} == 'widget'"
+              steps:
+                - to:
+                    uri: "mock:widget"
+            - simple: "${header.type} == 'gadget'"
+              steps:
+                - to: "mock:gadget"
+          otherwise:
+            steps:
+              - to: "mock:other"
+      - to:
+          uri: "log:orders"
+          parameters:
+            showHeaders: true
+            level: DEBUG
