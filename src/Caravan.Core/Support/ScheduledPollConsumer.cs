@@ -74,13 +74,16 @@ public abstract class ScheduledPollConsumer : ConsumerBase, IShutdownAware
     public bool IsSchedulerStarted => _loop is { IsCompleted: false };
 
     /// <inheritdoc />
-    public int PendingExchangesSize => 0;
+    public virtual int PendingExchangesSize => 0;
 
     /// <summary>The logger of the consumer.</summary>
     protected ILogger Logger { get; }
 
     /// <summary>Whether polling is allowed now (started and not suspended).</summary>
     protected bool IsPollAllowed => IsRunAllowed && !_suspended;
+
+    /// <summary>Cancelled when a stop or suspension is forced (the graceful shutdown timed out).</summary>
+    protected CancellationToken ForceToken => _force.Token;
 
     /// <summary>Starts the scheduler when <see cref="StartScheduler"/> is false (does nothing when it already runs).</summary>
     /// <exception cref="InvalidOperationException">The consumer is not started.</exception>
@@ -101,10 +104,10 @@ public abstract class ScheduledPollConsumer : ConsumerBase, IShutdownAware
     }
 
     /// <inheritdoc />
-    public bool DeferShutdown(ShutdownRunningTask runningTask) => false;
+    public virtual bool DeferShutdown(ShutdownRunningTask runningTask) => false;
 
     /// <inheritdoc />
-    public void PrepareShutdown(ShutdownRunningTask runningTask, bool suspendOnly, bool forced)
+    public virtual void PrepareShutdown(ShutdownRunningTask runningTask, bool suspendOnly, bool forced)
     {
         if (forced)
         {

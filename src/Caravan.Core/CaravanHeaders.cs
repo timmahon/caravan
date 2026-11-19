@@ -41,4 +41,52 @@ public static class CaravanHeaders
 
     /// <summary>The index of a message produced by a <c>dataset</c> endpoint (Camel's <c>CamelDataSetIndex</c>).</summary>
     public const string DataSetIndex = "CaravanDataSetIndex";
+
+    /// <summary>
+    /// The name of the file relative to the starting directory of a <c>file</c> consumer (<c>sub/hello.txt</c>); on a producer, the name to write
+    /// (Camel's <c>CamelFileName</c>).
+    /// </summary>
+    public const string FileName = "CaravanFileName";
+
+    /// <summary>The file name without leading directories (<c>hello.txt</c>, Camel's <c>CamelFileNameOnly</c>).</summary>
+    public const string FileNameOnly = "CaravanFileNameOnly";
+
+    /// <summary>The name of the file as consumed, kept when the route changes <see cref="FileName"/> (Camel's <c>CamelFileNameConsumed</c>).</summary>
+    public const string FileNameConsumed = "CaravanFileNameConsumed";
+
+    /// <summary>Whether the consumed file's path is absolute (the endpoint's directory was absolute; Camel's <c>CamelFileAbsolute</c>).</summary>
+    public const string FileAbsolute = "CaravanFileAbsolute";
+
+    /// <summary>The absolute path of the consumed file (Camel's <c>CamelFileAbsolutePath</c>).</summary>
+    public const string FileAbsolutePath = "CaravanFileAbsolutePath";
+
+    /// <summary>The path of the consumed file: the starting directory as configured joined with the relative name (Camel's <c>CamelFilePath</c>).</summary>
+    public const string FilePath = "CaravanFilePath";
+
+    /// <summary>The path of the consumed file relative to the starting directory (Camel's <c>CamelFileRelativePath</c>).</summary>
+    public const string FileRelativePath = "CaravanFileRelativePath";
+
+    /// <summary>The directory holding the consumed file, starting with the starting directory as configured (Camel's <c>CamelFileParent</c>).</summary>
+    public const string FileParent = "CaravanFileParent";
+
+    /// <summary>The length of the consumed file in bytes, a <see cref="long"/> (Camel's <c>CamelFileLength</c>).</summary>
+    public const string FileLength = "CaravanFileLength";
+
+    /// <summary>When the consumed file was last modified, in Unix milliseconds (Camel's <c>CamelFileLastModified</c>).</summary>
+    public const string FileLastModified = "CaravanFileLastModified";
+
+    /// <summary>The absolute path of the file a <c>file</c> producer wrote (Camel's <c>CamelFileNameProduced</c>).</summary>
+    public const string FileNameProduced = "CaravanFileNameProduced";
+
+    /// <summary>
+    /// A file name (or <see cref="IExpression"/>) that a <c>file</c> producer uses instead of its <c>fileName</c> option and
+    /// <see cref="FileName"/>, once: the producer removes it (Camel's <c>CamelOverruleFileName</c>).
+    /// </summary>
+    public const string OverruleFileName = "CaravanOverruleFileName";
+
+    /// <summary>
+    /// The local copy of a remote file, for file components that download before processing (Camel's <c>CamelFileLocalWorkPath</c>); the
+    /// <c>file</c> component itself never sets it.
+    /// </summary>
+    public const string FileLocalWorkPath = "CaravanFileLocalWorkPath";
 }

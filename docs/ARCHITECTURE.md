@@ -73,6 +73,10 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `Caravan.Hosting`: `AddCaravan`, `CaravanHostedService`, `AddCaravanHealthChecks` | Generic Host integration (see "Hosting") | Camel main / Spring Boot starter |
 | `Caravan.Dsl.Yaml`: `YamlRoutesBuilder`, `RoutesLoader`, `YamlDslSchema` | Routes in Camel's YAML DSL, route reload, JSON schema (see "YAML DSL") | `camel-yaml-dsl`, route reload, `camelYamlDsl.json` |
 | `LanguageExpression` | An expression/predicate in a language named by text, resolved on first use; template parameters substituted into its text | `ExpressionDefinition` (`language`, `expression`) |
+| `FileComponent` / `FileEndpoint` / `FileOperations` | The `file` component (see "File component") | `FileComponent` / `FileEndpoint` / `FileOperations` |
+| `GenericFile<T>` / `IGenericFileOperations<T>` / `GenericFileEndpoint<T>` / `GenericFileConsumer<T>` / `GenericFileProducer<T>` | File-system-neutral consumer and producer logic, reusable by remote file components | `GenericFile` / `GenericFileOperations` / `GenericFileEndpoint` / `GenericFileConsumer` / `GenericFileProducer` |
+| `IGenericFileProcessStrategy<T>` / `IGenericFileExclusiveReadLockStrategy<T>` | What happens to a consumed file (noop, delete, move) and how it is locked (marker file, changed, OS lock, rename, idempotent) | `GenericFileProcessStrategy` / `GenericFileExclusiveReadLockStrategy` |
+| `IExceptionHandler` / `LoggingExceptionHandler` | Failures that cannot reach a caller (e.g. moving a file after processing) | `ExceptionHandler` / `LoggingExceptionHandler` |
 
 ### Error semantics
 
@@ -484,7 +488,9 @@ resolved text is compiled and cached), so they work in `log`, `toD`, `setBody(si
   `exception.stacktrace`, `date:command[:pattern]`, `date-with-timezone:command:zone:pattern`, `properties:key[:default]`,
   `propertiesExist:[!]key`, `random(max)`/`random(min,max)`, `uuid` (the context's `UuidGenerator`; `uuid:default|classic|random|short|simple`), `null`,
   `empty(string|list|map|set)`, `env:NAME`/`env.NAME`/`sysenv.NAME`, `sys.name`, `collate(n)`, `skip(n)`, `join(separator,prefix,source)`,
-  `type:Full.Type.Name.Member` (public static field, constant or property), `ref:bean`, `threadId`, `threadName`, `hostname`.
+  `type:Full.Type.Name.Member` (public static field, constant or property), `ref:bean`, `threadId`, `threadName`, `hostname`, and the file functions
+  `file:name|name.ext|name.ext.single|name.noext|name.noext.single|onlyname|onlyname.noext|onlyname.noext.single|ext|parent|path|absolute|absolute.path|length|size|modified`
+  (see "File component").
   Type names accept C# keywords, Java names (`String`, `Integer`, `java.lang.Long`, `BigDecimal`, `List`, `Map`), full names and unique
   simple names of loaded types, and `[]`.
 - **OGNL** on `body`, `bodyAs(...)`, `header`, `exchangeProperty`, `exception` and `exchange`: `.Property` (exact, then case-insensitive;
@@ -493,7 +499,7 @@ resolved text is compiled and cached), so they work in `log`, `toD`, `setBody(si
   on dictionaries (also `.key` when there is no such property), indexers. A null root yields null; a null later in the path fails unless
   the step is null-safe (`?.`, `?[`). For headers and properties the full name is tried first (`${header.a.b}` reads the header `a.b`
   if it exists). Nested functions build the function text at run time: `${header.${header.name}}`, `${body.Substring(${header.n})}`.
-- **Dates**: commands `now`, `millis` (Unix milliseconds), `exchangeCreated`, `header.x`, `exchangeProperty.x` (a `DateTimeOffset`,
+- **Dates**: commands `now`, `millis` (Unix milliseconds), `exchangeCreated`, `file` (the `CaravanFileLastModified` header), `header.x`, `exchangeProperty.x` (a `DateTimeOffset`,
   `DateTime` — unspecified kind is UTC —, Unix milliseconds or a parsable string), with offsets `now-1h30m`, `header.due+2d` (units `d h m
   s ms`). Without pattern the value is a `DateTimeOffset` (or `long` for `millis`); patterns are Java `SimpleDateFormat` (`yyyy MM dd HH
   mm ss SSS`, `EEE`, `MMM`, `a`, `Z`, `X`, `'quoted'`, ... plus .NET `f`), formatted in `context.TimeProvider.LocalTimeZone` (UTC with
@@ -508,10 +514,10 @@ resolved text is compiled and cached), so they work in `log`, `toD`, `setBody(si
   (nestable) and the elvis `${header.x ?: 'default'}` (the fallback when the value is null, empty or `false`). A function text is split on
   these operators only when one appears as a separate word, so `${date:now:dd MMM yyyy}` stays one function.
 - **Extension point**: `SimpleLanguage.RegisterFunction(prefix, remainder => IExpression)` adds `${prefix:...}` functions; the `bean:`
-  function (`${bean:name?method=foo}`, `${bean:name.foo}`, `${bean:class:Full.Type?method=foo}`) is registered this way by `SimpleLanguage`'s
-  static constructor (`BeanExpression.Parse`).
+  function (`${bean:name?method=foo}`, `${bean:name.foo}`, `${bean:class:Full.Type?method=foo}`) and the `file:` functions
+  (`FileLanguageFunction.Parse`) are registered this way by `SimpleLanguage`'s static constructor (`BeanExpression.Parse`).
 
-Differences from Camel: no `messageTimestamp`, `date:file`, `variable(s)`, `jsonpath`/`xpath` or the newer string
+Differences from Camel: no `messageTimestamp`, `variable(s)`, `jsonpath`/`xpath` or the newer string
 functions; `sys.name` reads `AppContext.GetData`; `exception.stacktrace` is `Exception.ToString()`; `collate`/`skip`/`join` split a string
 body on commas (Camel's iterator) unlike `split`; unquoted words inside `${...}` are function names, not text (quote literals there);
 `$${` is not an escape (use `\${`); unknown escapes keep the backslash; header names containing `+`/`-` cannot be used in `date:` commands
@@ -631,6 +637,109 @@ defaults instead of being matched by type; method names fall back to a case-inse
   lenient/strict/off) and content per message after `consumeDelay` (`MockEndpoint.PerformAssertionsAsync`). `dataset-test:uri` reads the
   expected bodies from `uri` when it starts (polling until `timeout`, 2 s), optionally `split`, and expects them (`anyOrder`).
 - **browse** (`browse:name?browseLimit=n`): records a copy of each exchange (`Exchanges`), then hands it to its consumer like `direct`.
+
+### File component
+
+`file:directory?options` (`Caravan.Components.File`), Camel's file component: a scheduled polling consumer that picks files up from a
+directory and a producer that writes message bodies to files. Everything that does not touch the file system is generic, as in Camel, so a
+later FTP/SFTP/blob component reuses it.
+
+**Generic file SPI** (all generic over the file object type `T`; the `file` component uses `FileInfo`):
+
+| Type | Role |
+|---|---|
+| `GenericFile<T>` (`IGenericFile` non-generic view) | A listed file: endpoint path, `FileName` (relative to the starting directory), `FileNameOnly`, relative and absolute paths, `Parent`, length, last modified (Unix ms), directory flag, charset, the `T` object, and `ContentOpener`. `ChangeFileName` re-points it after a rename (relative names are relative to the starting directory; a leading starting directory, as `${file:parent}` yields, is clipped). `BindToExchange` makes it the body and sets the headers and the `CaravanFileExchangeFile` property. |
+| `IGenericFileOperations<T>` | `BuildDirectory`, `ExistsFile`/`ExistsDirectory`, `DeleteFile`, `RenameFile`, `ListFiles(directory)` (one level, relative names computed), `GetFile` (fresh length/modification), `RetrieveFileAsync` (make the content readable: local = set the lazy opener; remote = download), `ReleaseRetrievedFileResources`, `StoreFileAsync(name, exchange, append)` (streaming write). `FileOperations` is the local implementation. |
+| `GenericFileEndpoint<T>` | All options (below) as properties, Simple options compiled when set, `CreateExchange(file)`, done file names, `Validate()`, `CreateProcessStrategy()` (Camel's factory) and `CreateExclusiveReadLockStrategy()` (generic: `none`, `rename`, `idempotent`); abstract `CreateOperations()`. `FileEndpoint` adds `markerFile`, `changed`, `fileLock`, `chmod`, `chmodDirectory`. |
+| `GenericFileConsumer<T>` | The poll (below); `IShutdownAware` via `ScheduledPollConsumer`, `IHealthCheck`. |
+| `GenericFileProducer<T>` | Name resolution, jail, `fileExist`, temporary file, done file. |
+| `IGenericFileProcessStrategy<T>` | `Begin` (read lock + `preMove`), `Abort`, `Commit`, `Rollback`; built-ins `GenericFileNoOpProcessStrategy`, `GenericFileDeleteProcessStrategy`, `GenericFileRenameProcessStrategy` on `GenericFileProcessStrategySupport` (releases the lock first, `Rename` evaluates an expression on a copy of the exchange carrying the file's headers, replaces an existing target and creates directories). |
+| `IGenericFileExclusiveReadLockStrategy<T>` | `PrepareOnStartup`, `Acquire`, `ReleaseOnAbort/Rollback/Commit`. Built-ins: `MarkerFileExclusiveReadLockStrategy` (optionally wrapping another), `FileChangedExclusiveReadLockStrategy`, `FileLockExclusiveReadLockStrategy`, `GenericFileRenameExclusiveReadLockStrategy<T>`, `GenericFileIdempotentRepositoryReadLockStrategy<T>`. A strategy only releases what its own exchange acquired. |
+| `IGenericFileFilter<T>`, `AntPathMatcherGenericFileFilter<T>` | `filter=#bean`; `antInclude`/`antExclude` (`?`, `*`, `**`, comma-separated, matched on the relative path; directories always accepted). |
+
+**Poll** (Camel's `GenericFileConsumer.poll`): before the first poll the process strategy prepares (orphan marker files deleted); the starting
+directory is listed recursively (`recursive`, depth 1 = the starting directory, `minDepth`/`maxDepth`, `preSort`), keeping files that match
+(names starting with `.` and `*.caravanLock` skipped unless `includeHiddenFiles`/`includeHiddenDirs`; then `filter`, Ant filter,
+`filterDirectory` for directories, `exclude`/`excludeExt` before `include`/`includeExt` on the name only and ignoring case, `fileName`,
+`filterFile`, the done file), that can be added to the in-progress repository (so a file is never taken twice, in one poll or by concurrent
+polls of the endpoint) and, when idempotent, whose key is not in the idempotent repository. With `eagerMaxMessagesPerPoll` (default) listing
+stops at `maxMessagesPerPoll`. Then `sorter`, `sortBy` (on exchanges created for the files), `shuffle`, the limit, and the batch: each
+exchange gets `CaravanBatchIndex`/`CaravanBatchSize`/`CaravanBatchComplete` (so `completionFromBatchConsumer` works), the strategy begins
+(a file not locked is skipped until the next poll), the file is refreshed (a file that disappeared meanwhile is skipped) and retrieved, a
+`GenericFileOnCompletion` synchronization is added, and the exchange is routed. The synchronization runs when the exchange's unit of work is
+done — after a `seda` hand-over, when the other route finishes: success adds the idempotent key, deletes the done file (each for a
+`${file:name}` done file, at the end of the batch for a fixed one) and commits (`move`/`delete`); failure rolls back (`moveFailed`, else the
+file stays and is retried at the next poll); failures there go to `onCompletionExceptionHandler` (default: logged); the file then leaves the
+in-progress repository, as do the files of the batch that were not processed. A failure handled by an error handler (dead letter channel,
+`handled`) commits. The poll waits for each exchange, so a graceful stop or suspend completes the current file; with
+`ShutdownRunningTask.CompleteAllTasks` the rest of the batch too (until forced). Read-lock waits use the context's `TimeProvider`.
+
+**Body.** The body is the `GenericFile<FileInfo>`; nothing is read until it is converted: type converters turn an `IGenericFile` into a
+`Stream` (a `FileStream` opened then, shared for reading and deletion), `byte[]`, `string` (in the file's charset, the `charset` option, or
+`CaravanCharsetName`, default UTF-8) or `FileInfo`. **Headers**: `CaravanFileName` (relative, or the name only with `flatten`),
+`CaravanFileNameOnly`, `CaravanFileNameConsumed`, `CaravanFileRelativePath`, `CaravanFileAbsolute` (the starting directory was absolute),
+`CaravanFileAbsolutePath`, `CaravanFilePath` (starting directory as configured + relative path), `CaravanFileParent`, `CaravanFileLength`
+(`long`), `CaravanFileLastModified` (Unix ms); producer: `CaravanFileNameProduced` (absolute path), `CaravanOverruleFileName` (used once);
+`CaravanFileLocalWorkPath` is reserved for remote components.
+
+**Simple `file:` functions** read those headers (so they also work for a producer's `fileName`): `name`, `name.ext`/`ext` (after the first
+dot of the name), `name.ext.single` (after the last), `name.noext`, `name.noext.single`, `onlyname`, `onlyname.noext`,
+`onlyname.noext.single`, `parent`, `path`, `absolute`, `absolute.path`, `length`/`size` (`long`), `modified` (`DateTimeOffset`), and
+`${date:file:pattern}`.
+
+**Consumer options** (plus every `ScheduledPollConsumer` option: `initialDelay` 1 s, `delay` 500 ms, `useFixedDelay`, `greedy`,
+`sendEmptyMessageWhenIdle`, backoff, `repeatCount`, `startScheduler`, `pollStrategy`):
+
+| Option | Default | Notes |
+|---|---|---|
+| `noop` | false | Leave the file; implies `idempotent`. |
+| `delete` | false | Delete after success (not with `move`). |
+| `move` | `.caravan` | Simple; a plain directory means `${file:parent}/dir/${file:onlyname}`; relative to the starting directory unless absolute. |
+| `preMove`, `moveFailed` | | As `move`; `preMove` re-binds the exchange to the moved file. |
+| `recursive`, `minDepth`, `maxDepth` | false, 0, unlimited | |
+| `include`, `exclude` | | Regex on the name, ignoring case. |
+| `includeExt`, `excludeExt` | | `txt,xml`, `tar.gz`, ignoring case. |
+| `antInclude`, `antExclude`, `antFilterCaseSensitive` | | true |
+| `filter`, `filterFile`, `filterDirectory` | | `#bean`; Simple predicates on the file's headers. |
+| `fileName` | | Only this file (Simple, evaluated once per poll). |
+| `includeHiddenFiles`, `includeHiddenDirs` | false | |
+| `sortBy`, `sorter`, `shuffle`, `preSort` | | `[reverse:][ignoreCase:]expression` groups separated by `;`. |
+| `maxMessagesPerPoll`, `eagerMaxMessagesPerPoll` | 0, true | |
+| `idempotent`, `idempotentKey`, `idempotentRepository` | `noop`, absolute path, memory (1000) | |
+| `inProgressRepository` | memory (50000) | |
+| `doneFileName` | | Only `${file:name}` / `${file:name.noext}`; the file waits for its done file. |
+| `directoryMustExist`, `startingDirectoryMustExist`, `autoCreate` | false, false, true | `autoCreate` creates the starting directory at start. |
+| `charset`, `flatten` | | |
+| `processStrategy`, `exclusiveReadLockStrategy`, `onCompletionExceptionHandler` | | `#bean` |
+| `readLock` | `markerFile` | `none`, `markerFile`, `changed`, `fileLock`, `rename`, `idempotent`. |
+| `readLockTimeout`, `readLockCheckInterval` | 10 s, 1 s | `changed`/`fileLock`/`rename`; timeout must exceed the interval; 0 = wait forever. |
+| `readLockMinLength`, `readLockMinAge` | 1, 0 | `changed`: with a minimum age the file is taken once old enough instead of comparing two checks. |
+| `readLockMarkerFile`, `readLockDeleteOrphanLockFiles` | true, true | `changed`/`fileLock`/`rename` also take a marker file. |
+| `readLockRemoveOnRollback`, `readLockRemoveOnCommit` | true, false | `idempotent`. |
+| `readLockLoggingLevel` | DEBUG | Camel names (`WARN`, ...) are accepted for every `LogLevel` option. |
+
+**Producer options**: `fileName` (Simple; else `CaravanFileName`, else the message id; `CaravanOverruleFileName` wins over the header),
+`fileExist` (`Override`, `Append`, `Fail`, `Ignore`, `Move` + `moveExisting`, `TryRename`), `tempPrefix`/`tempFileName` (written in the
+target's directory, then renamed; not with `Append`), `eagerDeleteTargetFile` (true), `autoCreate` (true), `charset`, `flatten`,
+`appendChars` (`\n`, `\r`, `\t`), `doneFileName`, `keepLastModified` (from `CaravanFileLastModified`), `allowNullBody` (false),
+`jailStartingDirectory` (true: a name resolving outside the starting directory — `../x`, an absolute path — fails with an
+`ArgumentException`), `forceWrites` (true: flushed to disk), `chmod`/`chmodDirectory` (octal, POSIX only). Bodies are written by streaming:
+a consumed file (copied through its content opener, so a `fileLock`ed file too, transcoded when the charsets differ), a `Stream` (a stream
+cache is reset), bytes, text, else what the type converters give. Writes to one path are serialized (striped locks).
+
+**Read locks.** `markerFile` creates `name.caravanLock` with `CreateNew` (atomic, so concurrent consumers — also in other processes — exclude
+each other) and deletes it on release; it does not detect a writer that does not use marker files. `changed` compares length and
+modification time `readLockCheckInterval` apart. `fileLock` opens the file with `FileShare.None` (an exclusive `flock` on Unix, respected by
+.NET writers, which hold a shared lock) and reads the body through that handle. `rename` renames the file to itself through a temporary
+name. `idempotent` takes the file by adding its path to the (shared) idempotent repository.
+
+Differences from Camel: the default move directory is `.caravan` and marker files end with `.caravanLock` (Camel: `.camel`, `.camelLock`);
+`CaravanFileAbsolutePath` is always a real absolute path; relative `moveExisting` names are relative to the starting directory (Camel: the
+working directory); `tempFileName` is evaluated with the target's name in `CaravanFileName`/`CaravanFileNameOnly`; `fileExist=Append` with a
+temporary file is rejected; the poll's message count is the number of files begun; a file that disappeared or could not be retrieved is
+skipped and unlocked; directories are not created again while polling; no `probeContentType`, `idempotent-changed`/`idempotent-rename` read
+locks, `readLockIdempotentReleaseDelay`, `copyAndDeleteOnRenameFail`/`renameUsingCopy` (`File.Move` copies across volumes),
+`startingDirectoryMustHaveAccess`, `bridgeErrorHandler`, `extendedAttributes` or `bufferSize`.
 
 ### Route templates
 
@@ -795,7 +904,8 @@ created components implementing `IHealthCheckRepository`; `ExcludePattern` drops
 (liveness and readiness, Up while started), `route:{id}` (Up when started or intentionally not started, `Down` when failed, `Unknown` while the
 supervising route controller retries, `Degraded` when stopped/suspended though it should run), `consumer:{id}` (`Down` once the supervising controller
 gave up, `Unknown` while it retries, or the consumer's own result when it implements `IHealthCheck`), `circuit-breakers` (`Degraded` while a circuit is
-open or isolated) and, from the `seda`/`vm` components, `seda:{name}` (`Degraded` while a bounded queue is full). `HealthCheckRegistry.Aggregate` gives
+open or isolated) and, from the `seda`/`vm` components, `seda:{name}` (`Degraded` while a bounded queue is full). A `file` consumer is its own
+`consumer:{id}` check: `Down` while its directory is missing or its last poll failed (e.g. unreadable directory). `HealthCheckRegistry.Aggregate` gives
 the worst state.
 
 ### Hosting
@@ -977,7 +1087,7 @@ Register built-in components in the `CaravanContext` static constructor. Backgro
 "Consumers: lifecycle, suspension and shutdown" above.
 
 Built-in components: `direct`, `seda` (and `vm`, its process-wide variant), `timer`, `scheduler`, `log`, `mock`, `saga`, `dataformat`, `bean`,
-`class`, `controlbus`, `stub`, `ref`, `dataset`, `dataset-test`, `browse`, `kamelet`.
+`class`, `controlbus`, `stub`, `ref`, `dataset`, `dataset-test`, `browse`, `kamelet`, `file`.
 
 ### Consumers: lifecycle, suspension and shutdown
 

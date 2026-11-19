@@ -137,6 +137,18 @@ public static class ExchangePropertyKeys
     /// <summary>The URI of the route's endpoint, set by <c>interceptFrom</c> (as the header of the same name).</summary>
     public const string InterceptedEndpoint = CaravanHeaders.InterceptedEndpoint;
 
+    /// <summary>The <c>GenericFile</c> a <c>file</c> consumer created the exchange for (Camel's <c>CamelFileExchangeFile</c>).</summary>
+    public const string FileExchangeFile = "CaravanFileExchangeFile";
+
+    /// <summary>The path of the marker file of the <c>markerFile</c> read lock held for the exchange's file (Camel's <c>CamelFileLockFileName</c>).</summary>
+    public const string FileLockFileName = "CaravanFileLockFileName";
+
+    /// <summary>
+    /// The name of the charset of the exchange's text content (Camel's <c>CamelCharsetName</c>): set by a <c>file</c> consumer with the
+    /// <c>charset</c> option and used when its file body is converted to a string.
+    /// </summary>
+    public const string CharsetName = "CaravanCharsetName";
+
     /// <summary>Internal: the <c>interceptSendToEndpoint</c> interceptors whose block the exchange is running (they do not intercept it again).</summary>
     internal const string InterceptSendToEndpointActive = "CaravanInterceptSendToEndpointActive";
 }
