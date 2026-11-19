@@ -20,4 +20,10 @@ public static class CaravanHeaders
 
     /// <summary>The maximum number of redeliveries, when limited (Camel's <c>Exchange.REDELIVERY_MAX_COUNTER</c>).</summary>
     public const string RedeliveryMaxCounter = "CaravanRedeliveryMaxCounter";
+
+    /// <summary>
+    /// The id of the saga the exchange belongs to (Camel's <c>Exchange.SAGA_LONG_RUNNING_ACTION</c>, the LRA header). Set by the <c>saga</c> EIP
+    /// and sent to compensation and completion endpoints.
+    /// </summary>
+    public const string SagaLongRunningAction = "Long-Running-Action";
 }

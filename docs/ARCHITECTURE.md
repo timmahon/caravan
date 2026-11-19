@@ -48,6 +48,8 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `IIdempotentRepository` / `MemoryIdempotentRepository` | Processed message ids of the `idempotentConsumer` EIP | `IdempotentRepository` / `MemoryIdempotentRepository` |
 | `ILoadBalancer` / `Caravan.LoadBalancing` | Chooses the outputs of the `loadBalance` EIP | `LoadBalancer` |
 | `IClaimCheckRepository` / `MemoryClaimCheckRepository` | Per-exchange store of the `claimCheck` EIP | `ClaimCheckRepository` |
+| `CircuitBreakerProcessor` / `ICircuitBreakerStateRegistry` | The `circuitBreaker` EIP (Polly v8) and its circuits by node id | `Resilience4jProcessor` / JMX |
+| `ISagaService` / `ISagaCoordinator` / `InMemorySagaService` | Saga SPI of the `saga` EIP and `saga` component, in-memory default | `CamelSagaService` / `CamelSagaCoordinator` / `InMemorySagaService` |
 
 ### Error semantics
 
@@ -77,8 +79,9 @@ Camel's error handling model, built on `IErrorHandlerFactory` (see "Extension po
 - **Per node.** `RedeliveryErrorHandlerFactory` wraps every node in a `RedeliveryErrorHandler`, so a redelivery retries only the
   failing node, with the message restored as it was before the node's first attempt and the `CaravanRedelivered`,
   `CaravanRedeliveryCounter` and `CaravanRedeliveryMaxCounter` headers set. Delays (`RedeliveryPolicy`: fixed, exponential
-  back-off, collision avoidance, `delayPattern`) are awaited on `context.TimeProvider`. Nodes of `doTry`/`doCatch`/`doFinally`
-  and of `onException` blocks are **not** wrapped: they handle errors themselves.
+  back-off, collision avoidance, `delayPattern`) are awaited on `context.TimeProvider`. Nodes of `doTry`/`doCatch`/`doFinally`,
+  of `onException` blocks and inside a `circuitBreaker` (block and fallback, unless `inheritErrorHandler`) are **not** wrapped: they
+  handle errors themselves.
 - **Exhaustion.** When redelivery is exhausted the failure processor runs on the same exchange with `Exception` cleared and
   `CaravanExceptionCaught`, `CaravanFailureEndpoint`, `CaravanFailureRouteId` and `CaravanFailureTimestamp` set: the matching
   `onException` block, else the dead letter endpoint. Then the failure is *handled* (`ErrorHandlerHandled`: routing stops, the
@@ -282,6 +285,66 @@ stores fit; `AddAsync` must be atomic; repositories that are `IService`s are sta
 called concurrently; `QueueLoadBalancer` is the base for single-output choices; an `IService` load balancer is started with the route.
 `IClaimCheckRepository` is synchronous (it lives on the exchange); `MemoryClaimCheckRepository` is the default.
 
+### Resilience: circuit breaker
+
+`.CircuitBreaker(cb => cb.To("direct:remote"), c => c.FailureRatio(0.5).MinimumThroughput(10).SamplingDuration(...).BreakDuration(...)
+.Timeout(...).Bulkhead(maxConcurrent, maxWaiting), fallback: f => f.Transform(...))` (`CircuitBreakerDefinition`, `OnFallbackDefinition`,
+`CircuitBreakerBuilder`), Camel's `circuitBreaker` with Resilience4j, built on **Polly v8** (`Polly.Core`).
+
+- **Pipeline.** Per node, a `CircuitBreakerCircuit` holds a `ResiliencePipeline<Exchange>`: circuit breaker, then (inside it) the time limit,
+  built with `ResiliencePipelineBuilder.TimeProvider = context.TimeProvider` so break, sampling and timeout durations follow the fake clock in
+  tests. The bulkhead (a semaphore plus a bounded count of waiters) admits the call before the pipeline; rejections are not counted by the
+  breaker, timeouts are. The block runs on a copy of the exchange (same id, same unit of work, a token cancelled on timeout); the call is
+  awaited with `WaitAsync(token)`, so a block that ignores cancellation is *abandoned* on timeout (it finishes on its copy, which is dropped). On
+  success the copy's results are copied back.
+- **Outcomes.** Open circuit → `BrokenCircuitException` (`IsolatedCircuitException` when isolated), timeout → `TimeoutRejectedException`, full
+  bulkhead → `BulkheadRejectedException`, or the block's own failure. The fallback (`OnFallback`) then runs on the exchange as it was before the
+  breaker, with the exception in `CaravanExceptionCaught`; without a fallback the exchange fails with it. `OnFallbackViaNetwork` runs the fallback
+  through a second circuit with the same configuration (`<id>-fallback`). Properties: `CaravanResponseSuccessfulExecution`,
+  `CaravanResponseFromFallback`, `CaravanResponseShortCircuited`, `CaravanResponseTimedOut`, `CaravanResponseRejected` (open circuit or full
+  bulkhead) and `CaravanCircuitBreakerState`. `RecordExceptions`/`IgnoreExceptions` only choose what the circuit counts; the fallback runs for any
+  failure.
+- **Configuration.** `CircuitBreakerConfiguration` (all options nullable) merges defaults (failure ratio 0.5, minimum throughput 100, sampling 30 s,
+  break 60 s) ← the context default (`SetDefaultCircuitBreakerConfiguration`) ← the named configuration (`ConfigurationRef(name)`: one added with
+  `AddCircuitBreakerConfiguration` or a registry bean) ← the node's own options. Resolved when the route is created.
+- **State.** Circuits are per node id and live as long as the route's processors (a route stop/start keeps them).
+  `context.GetCircuitBreakerStateRegistry()` lists them (`Closed`/`Open`/`HalfOpen`/`Isolated`) and can isolate or close one. Polly reports
+  half-open only once the probe call arrives after the break duration.
+- **Error handling.** As in Camel the breaker handles failures: nodes inside the block and fallback are not wrapped with the route's error
+  handler unless `InheritErrorHandler()`. The `circuitBreaker` node itself is wrapped, but a failure leaving it is flagged so that its error handler
+  goes straight to `onException`/the dead letter channel without redelivering the call.
+
+Differences from Camel: Polly's breaker is time-based (Resilience4j defaults to a count-based window) and lets one probe through in half-open;
+timeouts count as failures (Resilience4j's time limiter is outside the breaker); the bulkhead has a waiting queue length instead of a maximum
+wait duration; `onFallbackViaNetwork` (Hystrix only in Camel) is kept with the meaning above.
+
+### Sagas
+
+`.Saga(s => s.Propagation(SagaPropagation.Required).Compensation("direct:undo").Completion("direct:done").Timeout(...)
+.CompletionMode(SagaCompletionMode.Auto).Option("id", Expr.Header("orderId")), body => body.To(...))` (`SagaDefinition`, `SagaBuilder`,
+`SagaProcessor`), Camel's LRA-style `saga` EIP with its in-memory saga service.
+
+- **Current saga.** The `Long-Running-Action` header (`CaravanHeaders.SagaLongRunningAction`) names it; a saga the service no longer knows
+  (finished) counts as none. Propagation, as Camel: `Required` joins or starts one, `RequiresNew` always starts one (the current header is
+  restored after the block), `Mandatory` fails without one (`CaravanExchangeException`), `Supports` joins when there is one, `NotSupported`
+  removes the header for the block, `Never` fails when there is one. Joining or starting adds a `SagaStep` (compensation and completion endpoints,
+  option expressions evaluated now, timeout) with `ISagaCoordinator.BeginStepAsync`.
+- **Ending.** Only the EIP that *started* a saga ends it. `Auto`: when the block ends, `CompleteAsync` if the exchange succeeded,
+  `CompensateAsync` if it failed (exception or rollback), awaited by the exchange; then the previous header is restored. `Manual`: the saga and its
+  header stay until `saga:complete`/`saga:compensate` (`SagaComplete()`/`SagaCompensate()`, the `saga` component) or the timeout. The chained form
+  `.Saga(s => ...)` without a block makes the rest of the exchange the scope: an `Auto` saga ends through an `ISynchronization` when the unit of work
+  completes. Completing a compensated saga (or the reverse) throws `InvalidOperationException`, which fails the exchange.
+- **SPI** (`Caravan.Saga`). `ISagaService` (`NewSagaAsync`, `GetSagaAsync`) and `ISagaCoordinator` (`BeginStepAsync`, `CompleteAsync`,
+  `CompensateAsync`), asynchronous so an LRA coordinator fits. The context's service: `SetSagaService`, else the only `ISagaService` bean, else an
+  `InMemorySagaService` created on first use; the first route using it adds it to the context's services (started and stopped with the context).
+- **InMemorySagaService.** Steps' endpoints are called last step first, each with a new `InOnly` exchange whose headers are the step's option
+  values plus `Long-Running-Action`; a failing call is retried `MaxRetryAttempts` (5) times, `RetryDelay` (5 s) apart on the context's clock,
+  then logged (the saga stays `Completing`/`Compensating`). A step timeout is an `ITimer` on the context's clock: a still running saga is then
+  compensated in the background (the service's stop waits for it). Finished sagas are forgotten.
+
+Differences from Camel: the block form scopes the saga to the block (Camel's `saga()` covers the rest of the route — the chained form does
+that); `MaxRetryAttempts` counts retries after the first call.
+
 ### Endpoint URIs
 
 - `scheme:path?k=v&k2=v2` (also `scheme://path`). Values may use `RAW(...)` to avoid decoding.
@@ -346,7 +409,7 @@ Derive from `ComponentBase` (override `CreateEndpoint(uri, remaining, parameters
 Register built-in components in the `CaravanContext` static constructor. Background consumers follow the rules in
 "Consumers: lifecycle, suspension and shutdown" above.
 
-Built-in components: `direct`, `seda` (and `vm`, its process-wide variant), `timer`, `scheduler`, `log`, `mock`.
+Built-in components: `direct`, `seda` (and `vm`, its process-wide variant), `timer`, `scheduler`, `log`, `mock`, `saga`.
 
 ### Consumers: lifecycle, suspension and shutdown
 
@@ -401,7 +464,7 @@ Other conventions:
 - `net10.0`, nullable enabled.
 - File-scoped namespaces: `Caravan` (main API), `Caravan.Spi`, `Caravan.Model`, `Caravan.Builder`,
   `Caravan.Processors`, `Caravan.Support`, `Caravan.Impl`, `Caravan.Aggregation` (built-in aggregation strategies),
-  `Caravan.LoadBalancing` (built-in load balancers), `Caravan.Idempotent` (idempotent repositories),
+  `Caravan.LoadBalancing` (built-in load balancers), `Caravan.Idempotent` (idempotent repositories), `Caravan.Saga` (saga SPI and in-memory service),
   `Caravan.Components.<Name>`.
 - Tests: xUnit, one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
   expectation or `TimeProvider` can be used instead; keep the suite fast.

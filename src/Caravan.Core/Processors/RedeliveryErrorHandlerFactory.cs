@@ -5,8 +5,8 @@ namespace Caravan.Processors;
 
 /// <summary>
 /// Wraps the nodes of one route with a <see cref="RedeliveryErrorHandler"/> configured from a <see cref="RedeliveryErrorHandlerDefinition"/>
-/// and the route's <c>onException</c> clauses. Nodes of <c>doTry</c>/<c>doCatch</c>/<c>doFinally</c> and <c>onException</c> blocks are
-/// not wrapped: they handle errors themselves (as in Camel).
+/// and the route's <c>onException</c> clauses. Nodes of <c>doTry</c>/<c>doCatch</c>/<c>doFinally</c> and <c>onException</c> blocks, and the nodes
+/// inside a <c>circuitBreaker</c> (unless it inherits the error handler), are not wrapped: they handle errors themselves (as in Camel).
 /// </summary>
 internal sealed class RedeliveryErrorHandlerFactory : IErrorHandlerFactory
 {
@@ -68,6 +68,11 @@ internal sealed class RedeliveryErrorHandlerFactory : IErrorHandlerFactory
         for (var node = definition; node is not null; node = node.Parent)
         {
             if (node is TryDefinition or CatchDefinition or FinallyDefinition or OnExceptionDefinition)
+            {
+                return true;
+            }
+
+            if (node.Parent is CircuitBreakerDefinition { InheritErrorHandler: false })
             {
                 return true;
             }
