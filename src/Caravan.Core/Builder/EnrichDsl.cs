@@ -1,3 +1,4 @@
+using Caravan.Language;
 using Caravan.Model;
 using Caravan.Processors;
 using Caravan.Support;
@@ -11,7 +12,7 @@ public static class EnrichDsl
     /// Sends a copy of the exchange to the resource <paramref name="uri"/> (request/reply) and merges the reply into the exchange:
     /// <c>.Enrich("direct:resource", AggregationStrategies.From((original, resource) =&gt; ...))</c>. Without a strategy the exchange takes
     /// the reply (body and headers). The URI may contain <c>${header.x}</c>, <c>${body}</c>, <c>${exchangeProperty.x}</c> tokens
-    /// (see <see cref="TokenTemplate"/>).
+    /// (see <see cref="SimpleLanguage"/>).
     /// </summary>
     /// <param name="steps">The block to add to.</param>
     /// <param name="uri">The resource URI template.</param>
@@ -31,7 +32,7 @@ public static class EnrichDsl
         bool ignoreInvalidEndpoint = false,
         int cacheSize = ProducerCache.DefaultCacheSize)
         where T : RouteSteps =>
-        steps.Enrich(TokenTemplate.Parse(uri), aggregationStrategy, aggregationStrategyRef, aggregateOnException, shareUnitOfWork, ignoreInvalidEndpoint, cacheSize);
+        steps.Enrich(SimpleLanguage.Expression(uri), aggregationStrategy, aggregationStrategyRef, aggregateOnException, shareUnitOfWork, ignoreInvalidEndpoint, cacheSize);
 
     /// <summary>Sends a copy of the exchange to the resource computed by <paramref name="uri"/> (request/reply) and merges the reply into the exchange.</summary>
     /// <param name="steps">The block to add to.</param>
@@ -68,7 +69,7 @@ public static class EnrichDsl
     /// <summary>
     /// Receives a message from the resource <paramref name="uri"/> with a polling consumer and merges it into the exchange:
     /// <c>.PollEnrich("seda:resource", timeout: TimeSpan.FromSeconds(5))</c>. Without a strategy the exchange takes the received message,
-    /// or gets a null body when nothing was received in time. The URI may contain <c>${...}</c> tokens (see <see cref="TokenTemplate"/>).
+    /// or gets a null body when nothing was received in time. The URI may contain <c>${...}</c> functions of the Simple language (see <see cref="SimpleLanguage"/>).
     /// </summary>
     /// <param name="steps">The block to add to.</param>
     /// <param name="uri">The resource URI template.</param>
@@ -88,7 +89,7 @@ public static class EnrichDsl
         bool ignoreInvalidEndpoint = false,
         int cacheSize = ConsumerCache.DefaultCacheSize)
         where T : RouteSteps =>
-        steps.PollEnrich(TokenTemplate.Parse(uri), timeout, aggregationStrategy, aggregationStrategyRef, aggregateOnException, ignoreInvalidEndpoint, cacheSize);
+        steps.PollEnrich(SimpleLanguage.Expression(uri), timeout, aggregationStrategy, aggregationStrategyRef, aggregateOnException, ignoreInvalidEndpoint, cacheSize);
 
     /// <summary>Receives a message from the resource computed by <paramref name="uri"/> with a polling consumer and merges it into the exchange.</summary>
     /// <param name="steps">The block to add to.</param>

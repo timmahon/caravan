@@ -1,3 +1,4 @@
+using Caravan.Language;
 using Caravan.Aggregation;
 using Caravan.Processors;
 using Caravan.Spi;
@@ -14,7 +15,7 @@ public sealed class ClaimCheckDefinition(ClaimCheckOperation operation) : Proces
     /// <summary>The operation.</summary>
     public ClaimCheckOperation Operation { get; set; } = operation;
 
-    /// <summary>The key (required for <c>Set</c>, <c>Get</c> and <c>GetAndRemove</c>); may contain <c>${...}</c> tokens (see <see cref="TokenTemplate"/>).</summary>
+    /// <summary>The key (required for <c>Set</c>, <c>Get</c> and <c>GetAndRemove</c>); may contain <c>${...}</c> functions of the Simple language (see <see cref="SimpleLanguage"/>).</summary>
     public string? Key { get; set; }
 
     /// <summary>What <c>Get</c>, <c>GetAndRemove</c> and <c>Pop</c> merge back, e.g. <c>body,header:foo</c>; null for everything.</summary>
@@ -40,7 +41,7 @@ public sealed class ClaimCheckDefinition(ClaimCheckOperation operation) : Proces
         {
             return new ClaimCheckProcessor(
                 Operation,
-                Key is null ? null : TokenTemplate.Parse(Key),
+                Key is null ? null : SimpleLanguage.Expression(Key),
                 Filter,
                 AggregationStrategy ?? RegistryLookup.Lookup<IAggregationStrategy>(routeContext.Context, AggregationStrategyRef));
         }

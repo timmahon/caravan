@@ -17,6 +17,14 @@ public static class Pred
     public static IPredicate Header<T>(string name, Func<T?, bool> predicate) =>
         new FuncPredicate(e => predicate(e.Message.GetHeader(name) is null ? default : e.Message.GetHeader<T>(name)), $"header({name},{typeof(T).Name})");
 
+    /// <summary>
+    /// A Simple language predicate (Camel's <c>simple("...")</c> as a predicate), e.g.
+    /// <c>Pred.Simple("${header.amount} &gt; 100 &amp;&amp; ${body} contains 'vip'")</c>. Compiled once and cached; see
+    /// <see cref="Language.SimpleLanguage"/>.
+    /// </summary>
+    /// <exception cref="Language.Simple.SimpleParseException">The text is invalid.</exception>
+    public static IPredicate Simple(string text) => Language.SimpleLanguage.Predicate(text);
+
     /// <summary>A predicate that always returns <paramref name="value"/>.</summary>
     public static IPredicate Constant(bool value) => new FuncPredicate(_ => value, value ? "true" : "false");
 

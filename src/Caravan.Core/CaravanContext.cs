@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.Text;
 using Caravan.Builder;
 using Caravan.Components.Direct;
 using Caravan.Components.Log;
@@ -9,11 +8,13 @@ using Caravan.Components.Scheduler;
 using Caravan.Components.Seda;
 using Caravan.Components.Timer;
 using Caravan.Impl;
+using Caravan.Language;
 using Caravan.Model;
 using Caravan.Processors;
 using Caravan.Spi;
 using Caravan.Support;
 using Caravan.TypeConversion;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -59,10 +60,17 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
     /// <summary>Creates a context.</summary>
     /// <param name="services">Optional service provider used as a fallback by the registry for bean lookups.</param>
+    /// <remarks>When <paramref name="services"/> provides an <see cref="IConfiguration"/>, it is added as a properties source.</remarks>
     public CaravanContext(IServiceProvider? services = null)
     {
         Registry = new DefaultRegistry(services);
         Services = services;
+        PropertiesComponent = new DefaultPropertiesComponent(PropertiesSources);
+        Languages = new LanguageRegistry(this);
+        if (services?.GetService(typeof(IConfiguration)) is IConfiguration configuration)
+        {
+            PropertiesComponent.AddConfiguration(configuration);
+        }
     }
 
     /// <summary>
@@ -107,7 +115,16 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     public IList<IEventNotifier> EventNotifiers { get; } = new CopyOnWriteList<IEventNotifier>();
 
     /// <inheritdoc />
-    public IList<IPropertiesSource> PropertiesSources { get; } = new List<IPropertiesSource>();
+    public IList<IPropertiesSource> PropertiesSources { get; } = new CopyOnWriteList<IPropertiesSource>();
+
+    /// <inheritdoc />
+    public IPropertiesComponent PropertiesComponent { get; }
+
+    /// <inheritdoc />
+    public LanguageRegistry Languages { get; }
+
+    /// <inheritdoc />
+    public ILanguage ResolveLanguage(string name) => Languages.Resolve(name);
 
     /// <inheritdoc cref="ICaravanContext.InflightRepository" />
     /// <remarks>Can be replaced before the context starts.</remarks>
@@ -281,6 +298,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         {
             foreach (var definition in definitions)
             {
+                ResolvePlaceholders(definition);
                 AssignRouteId(definition);
                 _routeDefinitions.Add(definition);
             }
@@ -296,6 +314,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         {
             foreach (var definition in definitions)
             {
+                ResolvePlaceholders(definition);
                 AssignRouteId(definition);
                 _routeDefinitions.Add(definition);
             }
@@ -427,6 +446,22 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     /// <summary>Cancels <see cref="ShutdownToken"/> (used by the shutdown strategy to force a context shutdown).</summary>
     internal Task CancelShutdownTokenAsync() => _shutdown.CancelAsync();
 
+    /// <summary>Resolves property placeholders in the ids, group and descriptions of a route and its nodes when it is added (endpoint URIs are resolved when endpoints are created).</summary>
+    private void ResolvePlaceholders(RouteDefinition definition)
+    {
+        definition.Id = Resolve(definition.Id);
+        definition.Group = Resolve(definition.Group);
+        definition.Description = Resolve(definition.Description);
+        definition.FromId = Resolve(definition.FromId);
+        foreach (var node in definition.AllNodes())
+        {
+            node.Id = Resolve(node.Id);
+            node.Description = Resolve(node.Description);
+        }
+
+        string? Resolve(string? text) => text is null ? null : ResolvePropertyPlaceholders(text);
+    }
+
     private void AssignRouteId(RouteDefinition definition)
     {
         if (definition.Id is null)
@@ -451,6 +486,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         var routeId = definition.Id!;
         try
         {
+            SimpleRouteValidator.Validate(definition);
             var routeContext = new RouteContext(this, definition, routeId);
             var errorHandler = definition.ErrorHandler ?? ErrorHandler ?? new DefaultErrorHandlerDefinition();
             if (errorHandler.RequiresOriginalMessage ||
@@ -661,66 +697,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         prefix + _nodeIdCounters.AddOrUpdate(prefix, 1, (_, n) => n + 1);
 
     /// <inheritdoc />
-    public string ResolvePropertyPlaceholders(string text)
-    {
-        if (string.IsNullOrEmpty(text) || !text.Contains("{{", StringComparison.Ordinal))
-        {
-            return text;
-        }
-
-        var sb = new StringBuilder();
-        var i = 0;
-        var depth = 0;
-        while (i < text.Length)
-        {
-            var start = text.IndexOf("{{", i, StringComparison.Ordinal);
-            if (start < 0)
-            {
-                sb.Append(text, i, text.Length - i);
-                break;
-            }
-
-            var end = text.IndexOf("}}", start + 2, StringComparison.Ordinal);
-            if (end < 0)
-            {
-                sb.Append(text, i, text.Length - i);
-                break;
-            }
-
-            sb.Append(text, i, start - i);
-            var key = text[(start + 2)..end];
-            sb.Append(ResolvePlaceholder(key, text));
-            i = end + 2;
-            if (++depth > 100)
-            {
-                throw new ArgumentException($"Too many placeholders in: {text}");
-            }
-        }
-
-        var result = sb.ToString();
-        return result.Contains("{{", StringComparison.Ordinal) && result != text ? ResolvePropertyPlaceholders(result) : result;
-    }
-
-    private string ResolvePlaceholder(string key, string text)
-    {
-        string? defaultValue = null;
-        var colon = key.IndexOf(':');
-        if (colon >= 0)
-        {
-            defaultValue = key[(colon + 1)..];
-            key = key[..colon];
-        }
-
-        foreach (var source in PropertiesSources)
-        {
-            if (source.GetProperty(key) is { } value)
-            {
-                return value;
-            }
-        }
-
-        return defaultValue ?? throw new ArgumentException($"Property with key [{key}] not found in properties from text: {text}");
-    }
+    public string ResolvePropertyPlaceholders(string text) => PropertiesComponent.ParseUri(text);
 
     /// <inheritdoc />
     public T? GetExtension<T>()

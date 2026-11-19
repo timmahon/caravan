@@ -53,6 +53,9 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `InterceptDefinition` / `InterceptFromDefinition` / `InterceptSendToEndpointDefinition` | `intercept`, `interceptFrom`, `interceptSendToEndpoint` (see "Interception") | same |
 | `ISendToEndpointInterceptor` / `SendToEndpointInterceptors` | Intercept every send to matching endpoints (producer decorator), used by `interceptSendToEndpoint` and endpoint mocking | `InterceptSendToEndpoint` / `EndpointStrategy` |
 | `Caravan.Testing`: `AdviceWith`, `NotifyBuilder`, `CaravanTestSupport` | Test kit (see "Testing toolkit") | `camel-test`: `AdviceWith`, `NotifyBuilder`, `CamelTestSupport` |
+| `ILanguage` / `LanguageRegistry` / `ICaravanContext.ResolveLanguage` | Expression languages by name (see "Languages and the Simple language") | `Language` / `CamelContext.resolveLanguage` |
+| `SimpleLanguage`, `Expr.Simple`, `Pred.Simple`, `Lang.Simple` | The Simple language | `SimpleLanguage`, `simple()` |
+| `IPropertiesComponent` / `DefaultPropertiesComponent` | `{{placeholder}}` resolution (see "Properties") | `PropertiesComponent` |
 
 ### Error semantics
 
@@ -278,7 +281,7 @@ Definitions, processors and DSL follow "Adding an EIP"; the EIPs below keep Came
   handled does not fail over), and custom.
 - **claimCheck** (`ClaimCheckProcessor`). Per-exchange `IClaimCheckRepository` in the `CaravanClaimCheckRepository` property (exchange copies share
   it). `Set`/`Push` store a copy; `Get`/`GetAndRemove`/`Pop` merge a copy back with `ClaimCheckAggregationStrategy` and Camel's filter syntax
-  (`body`, `headers`, `header:pattern`, `+`/`-` prefixes; only exclusions means everything else). Keys may use `${...}` tokens.
+  (`body`, `headers`, `header:pattern`, `+`/`-` prefixes; only exclusions means everything else). Keys are Simple expressions (`${header.id}`).
 - **validate, script, setExchangePattern, sort, setHeaders**: `PredicateValidationException` when the predicate fails; `script` evaluates for side
   effects; `sort` turns the items of the body (or an expression) into a sorted `List<object?>` (natural ordering coerces types like Camel).
 
@@ -431,10 +434,93 @@ Differences from Camel: AdviceWith uses lambdas for the replacing steps (`Replac
 only the latest); the test base class takes properties (`IsMockEndpoints`, `UseAdviceWith`) instead of overridable `isXxx()` methods and
 needs the test framework to call `SetUpAsync`.
 
+### Languages and the Simple language
+
+**Languages SPI.** `ILanguage` (`Caravan.Spi`: `CreateExpression(text)`, `CreatePredicate(text)`, thread-safe) is resolved by name with
+`context.ResolveLanguage(name)` (`LanguageRegistry`, `ICaravanContext.Languages`): languages added to the context (`Languages.Add`), then an
+`ILanguage` bean bound under the name, then global ones (`LanguageRegistry.RegisterGlobal`). Built-ins (`Caravan.Language`): `simple`,
+`constant` (the text), `header` and `exchangeProperty` (the named value), `tokenize` (the body tokenized on the text), `ref` (a registry
+`IExpression`/`IPredicate`, looked up when evaluated). DSLs that read routes from text (YAML, row 14) resolve expressions this way.
+`Lang` (`using static Caravan.Builder.Lang;`) has terse factories: `Simple(text)`, `Constant`, `Body`, `Header`, `ExchangeProperty`,
+`Tokenize`, `Language(name, text)`.
+
+**Simple** (`Caravan.Language.SimpleLanguage`, internals in `Caravan.Language.Simple`). `SimpleParser` turns text into an immutable tree of
+`SimpleNode`s, evaluated concurrently; compiled texts are kept in LRU caches (`SimpleLanguage.CacheSize`, default 1000, as Camel) keyed by
+text, so `Expr.Simple(text)` returns the cached `SimpleExpression` and `Pred.Simple(text)` the cached `SimplePredicate`.
+`Lang.Simple(text)` returns a `SimpleBuilder`, both an `IExpression` and an `IPredicate` (Camel's `simple()`): the expression form is
+compiled at once, the predicate form when the route is created (`SimpleRouteValidator` walks every `IPredicate` property of the route's
+nodes), so a malformed predicate fails route creation. Errors are `SimpleParseException` (`Reason`, `Expression`, zero-based `Index`; the
+message ends with the text and a `*` under the position); evaluation failures (missing member, null without `?.`, bad index) are
+`ExpressionEvaluationException`. `{{placeholders}}` in a Simple text are resolved with the exchange's context before evaluation (the
+resolved text is compiled and cached), so they work in `log`, `toD`, `setBody(simple(...))` and so on.
+
+- **Expressions** are text mixed with functions `${...}` (or `$simple{...}`); a text made of one function evaluates to the function's value
+  (not a string), anything else to a string (null renders as nothing). Escapes: `\n`, `\t`, `\r`, `\${` (a literal `${`), `\}`, `\'`,
+  `\"`; other backslashes are kept. `$${body}` is a `$` followed by the body. `${function}++`/`--` (followed by whitespace or the end)
+  increments/decrements the value, converted back to its type, and writes it back to the body, header or exchange property.
+- **Functions**: `body`, `in.body`, `bodyType`, `bodyOneLine`, `bodyAs(Type)`, `mandatoryBodyAs(Type)` (`InvalidPayloadException`),
+  `header.name` / `header:name` / `header[name]` / `headers.name` / `in.header(s).name`, `headerAs(name,Type)`, `headers`,
+  `exchangeProperty.name` / `[name]`, `exchangePropertyAs(name,Type)`, `exchangeId`, `id`/`messageId`, `routeId`, `fromRouteId`,
+  `camelId`/`contextName`, `stepId`, `exchange`, `exception` (the exception, or `CaravanExceptionCaught`), `exception.message`,
+  `exception.stacktrace`, `date:command[:pattern]`, `date-with-timezone:command:zone:pattern`, `properties:key[:default]`,
+  `propertiesExist:[!]key`, `random(max)`/`random(min,max)`, `uuid` (`uuid:default|classic|random|simple`), `null`,
+  `empty(string|list|map|set)`, `env:NAME`/`env.NAME`/`sysenv.NAME`, `sys.name`, `collate(n)`, `skip(n)`, `join(separator,prefix,source)`,
+  `type:Full.Type.Name.Member` (public static field, constant or property), `ref:bean`, `threadId`, `threadName`, `hostname`.
+  Type names accept C# keywords, Java names (`String`, `Integer`, `java.lang.Long`, `BigDecimal`, `List`, `Map`), full names and unique
+  simple names of loaded types, and `[]`.
+- **OGNL** on `body`, `bodyAs(...)`, `header`, `exchangeProperty`, `exception` and `exchange`: `.Property` (exact, then case-insensitive;
+  public fields too; `size`/`length` read `Count`/`Length`), `.Method(args)` (constant arguments converted to the parameter types; Java
+  getters `getName()`/`isActive()` read properties), `[index]` on lists, arrays and other sequences (`last`, `last-1`), `[key]`/`['key']`
+  on dictionaries (also `.key` when there is no such property), indexers. A null root yields null; a null later in the path fails unless
+  the step is null-safe (`?.`, `?[`). For headers and properties the full name is tried first (`${header.a.b}` reads the header `a.b`
+  if it exists). Nested functions build the function text at run time: `${header.${header.name}}`, `${body.Substring(${header.n})}`.
+- **Dates**: commands `now`, `millis` (Unix milliseconds), `exchangeCreated`, `header.x`, `exchangeProperty.x` (a `DateTimeOffset`,
+  `DateTime` — unspecified kind is UTC —, Unix milliseconds or a parsable string), with offsets `now-1h30m`, `header.due+2d` (units `d h m
+  s ms`). Without pattern the value is a `DateTimeOffset` (or `long` for `millis`); patterns are Java `SimpleDateFormat` (`yyyy MM dd HH
+  mm ss SSS`, `EEE`, `MMM`, `a`, `Z`, `X`, `'quoted'`, ... plus .NET `f`), formatted in `context.TimeProvider.LocalTimeZone` (UTC with
+  a `FakeTimeProvider`) or the given IANA/Windows zone. Time comes from `context.TimeProvider`, so tests use the fake clock.
+- **Predicates**: operands (functions, quoted text that may contain functions, numbers, `true`/`false`, `null`, other unquoted words as
+  text) joined by whitespace-separated operators: `==`, `=~` (ignore case), `!=`, `!=~`, `>`, `>=`, `<`, `<=`, `contains`, `!contains`,
+  `~~` (contains ignoring case), `!~~`, `regex`, `!regex` (whole match), `in`, `!in` (comma list or collection), `range`, `!range`
+  (`'1..10'`, inclusive), `is`, `!is` (type), `startsWith`, `!startsWith`, `endsWith`, `!endsWith`, combined with `&&` and `||` evaluated
+  left to right with equal precedence and short-circuiting (Camel). Values are coerced with `ObjectHelper` (`'123' == 123`); comparing
+  with null is false except `null >= null` / `null <= null`; a lone operand is converted with `PredicateHelper.ToBoolean`.
+- **Inside a function** the same operators apply to bare functions and literals, plus the ternary `${header.n > 0 ? 'pos' : 'neg'}`
+  (nestable) and the elvis `${header.x ?: 'default'}` (the fallback when the value is null, empty or `false`). A function text is split on
+  these operators only when one appears as a separate word, so `${date:now:dd MMM yyyy}` stays one function.
+- **Extension point**: `SimpleLanguage.RegisterFunction(prefix, remainder => IExpression)` adds `${prefix:...}` functions; the `bean:`
+  function will be registered this way by the bean component (row 11) and fails to parse until then.
+
+Differences from Camel: no `messageHistory`, `messageTimestamp`, `date:file`, `variable(s)`, `jsonpath`/`xpath` or the newer string
+functions; `sys.name` reads `AppContext.GetData`; `exception.stacktrace` is `Exception.ToString()`; `collate`/`skip`/`join` split a string
+body on commas (Camel's iterator) unlike `split`; unquoted words inside `${...}` are function names, not text (quote literals there);
+`$${` is not an escape (use `\${`); unknown escapes keep the backslash; header names containing `+`/`-` cannot be used in `date:` commands
+(those characters start offsets, as in Camel); OGNL member names match case-insensitively as a fallback for Java-style names.
+
+### Properties
+
+`ICaravanContext.PropertiesComponent` (`IPropertiesComponent`, default `Impl.DefaultPropertiesComponent`) resolves placeholders:
+`{{key}}`, `{{key:default}}` (empty default allowed), nested keys (`{{app.{{env}}.url}}`), values and defaults containing placeholders
+(cycles fail with "Circular reference"), `{{env:NAME[:default]}}` (also tried upper-cased with `.`/`-` → `_`), `{{sys:name}}`
+(`AppContext.GetData`) and optional `{{?key}}`: `ParseUri` removes the query option whose value uses a missing optional placeholder, other
+text gets an empty string. A missing key without default throws `ArgumentException` ("Property with key [x] not found ...").
+Precedence: `OverrideProperties` → environment variables if `EnvironmentVariableMode.Override` → `Sources` in order (=
+`ICaravanContext.PropertiesSources`; `AddConfiguration(IConfiguration)` adds a `ConfigurationPropertiesSource`, which reads `app.queue`
+then `app:queue`) → `InitialProperties` → environment variables if `Fallback` → the default. `EnvironmentVariableMode` defaults to `Never`
+(in .NET environment variables usually arrive through `IConfiguration`'s provider; Camel defaults to override). A context created with an
+`IServiceProvider` that has an `IConfiguration` uses it as a source. API: `ResolveProperty(key)` (null when missing), `Resolve(key)`,
+`ResolvePlaceholders(text)`, `ParseUri(uri)`; `context.ResolvePropertyPlaceholders(text)` is `ParseUri`.
+
+Where placeholders are resolved: endpoint URIs (every `GetEndpoint`: `from`, `to`, dynamic URIs, endpoint options), Simple expressions and
+predicates (so `log` messages and every dynamic string option), route ids, groups and descriptions and node ids/descriptions (when routes are
+added), the `log` EIP's logger name, registry references (`aggregationStrategyRef`, ...), and the `properties:` Simple function. Not
+covered: the `properties:` endpoint component and encrypted values.
+
 ### Endpoint URIs
 
 - `scheme:path?k=v&k2=v2` (also `scheme://path`). Values may use `RAW(...)` to avoid decoding.
-- `{{key}}` / `{{key:default}}` placeholders are resolved via `ICaravanContext.PropertiesSources`.
+- `{{key}}` / `{{key:default}}` / `{{env:NAME}}` / `{{?key}}` placeholders are resolved by `ICaravanContext.PropertiesComponent`
+  (`ParseUri`, see "Properties") when the endpoint is created.
 - Endpoints are cached by normalized URI (parameters sorted).
 - Remaining URI parameters are bound to public settable properties of the endpoint (case-insensitive,
   converted by the type converter). `#name` / `#bean:name` values are looked up in the registry.
@@ -486,8 +572,10 @@ unless there is a documented reason to differ (note it in the definition's XML d
 
 Expressions and predicates: `Expr` (values), `Pred` (predicate factories and combinators) and the
 `PredicateExtensions` on `IExpression` (`IsEqualTo`, `IsGreaterThan`, `Contains`, `Regex`, `In`, ...), which
-coerce types like Camel (`Support.ObjectHelper`). String options that accept `${...}` tokens (`toD`, `wireTap`,
-the `log` EIP) go through `Support.TokenTemplate`, an interim stand-in to be replaced by the Simple language.
+coerce types like Camel (`Support.ObjectHelper`). String options that are dynamic in Camel are Simple expressions, compiled when
+the route is built (`SimpleLanguage.Expression(text)`): `toD`, `wireTap`, `enrich`/`pollEnrich` URIs, `recipientList` and
+`routingSlip` strings, `claimCheck` keys and `log` messages. Use `Expr.Simple`/`Pred.Simple` (or `Lang.Simple`) for expression and
+predicate parameters; never parse `${...}` by hand.
 
 ## Adding a component
 
@@ -550,7 +638,8 @@ Ground rules, enforced by the build (a violation fails `dotnet build`):
 Other conventions:
 
 - `net10.0`, nullable enabled.
-- File-scoped namespaces: `Caravan` (main API), `Caravan.Spi`, `Caravan.Model`, `Caravan.Builder`,
+- File-scoped namespaces: `Caravan` (main API), `Caravan.Spi`, `Caravan.Model`, `Caravan.Builder`, `Caravan.Language` (languages;
+  `Caravan.Language.Simple` holds the Simple parser),
   `Caravan.Processors`, `Caravan.Support`, `Caravan.Impl`, `Caravan.Aggregation` (built-in aggregation strategies),
   `Caravan.LoadBalancing` (built-in load balancers), `Caravan.Idempotent` (idempotent repositories), `Caravan.Saga` (saga SPI and in-memory service),
   `Caravan.Components.<Name>`; `Caravan.Testing` (the test kit project).

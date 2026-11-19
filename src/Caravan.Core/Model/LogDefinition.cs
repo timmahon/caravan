@@ -1,3 +1,4 @@
+using Caravan.Language;
 using Caravan.Processors;
 using Caravan.Spi;
 using Caravan.Support;
@@ -6,8 +7,9 @@ using Microsoft.Extensions.Logging;
 namespace Caravan.Model;
 
 /// <summary>
-/// The <c>log</c> EIP: logs <see cref="Message"/> (with <c>${...}</c> tokens, see <see cref="TokenTemplate"/>) through
-/// the context's logger factory. The logger name defaults to the route id, as in Camel.
+/// The <c>log</c> EIP: logs <see cref="Message"/>, a Simple expression (<c>${...}</c> functions and <c>{{placeholders}}</c>, see
+/// <see cref="SimpleLanguage"/>), through the context's logger factory. The logger name (placeholders allowed) defaults to the route id, as in
+/// Camel.
 /// </summary>
 public sealed class LogDefinition(string message) : ProcessorDefinition
 {
@@ -29,7 +31,7 @@ public sealed class LogDefinition(string message) : ProcessorDefinition
     /// <inheritdoc />
     public override IProcessor CreateProcessor(RouteContext routeContext) =>
         new LogProcessor(
-            TokenTemplate.Parse(Message),
+            SimpleLanguage.Expression(Message),
             LoggingLevel,
-            routeContext.Context.LoggerFactory.CreateLogger(LogName ?? routeContext.RouteId));
+            routeContext.Context.LoggerFactory.CreateLogger(LogName is null ? routeContext.RouteId : routeContext.Context.ResolvePropertyPlaceholders(LogName)));
 }

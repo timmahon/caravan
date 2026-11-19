@@ -1,3 +1,4 @@
+using Caravan.Language;
 using Caravan.Model;
 using Caravan.Processors;
 using Caravan.Support;
@@ -93,7 +94,7 @@ public static class RecipientListDsl
 
     /// <summary>
     /// Sends a copy of the exchange to each recipient of <paramref name="recipients"/>, which may contain <c>${header.x}</c>,
-    /// <c>${body}</c>, <c>${exchangeProperty.x}</c> tokens (see <see cref="TokenTemplate"/>): <c>.RecipientList("mock:a,mock:${header.b}")</c>.
+    /// <c>${body}</c>, <c>${exchangeProperty.x}</c> functions of the Simple language (see <see cref="SimpleLanguage"/>): <c>.RecipientList("mock:a,mock:${header.b}")</c>.
     /// </summary>
     /// <param name="steps">The block to add to.</param>
     /// <param name="recipients">The recipients template.</param>
@@ -127,5 +128,5 @@ public static class RecipientListDsl
         bool ignoreInvalidEndpoints = false,
         int cacheSize = ProducerCache.DefaultCacheSize)
         where T : RouteSteps
-        => steps.RecipientList(TokenTemplate.Parse(recipients), aggregationStrategy, aggregationStrategyRef, parallelProcessing, parallelAggregate, maxDegreeOfParallelism, streaming, stopOnException, timeout, onPrepare, shareUnitOfWork, delimiter, ignoreInvalidEndpoints, cacheSize);
+        => steps.RecipientList(SimpleLanguage.Expression(recipients), aggregationStrategy, aggregationStrategyRef, parallelProcessing, parallelAggregate, maxDegreeOfParallelism, streaming, stopOnException, timeout, onPrepare, shareUnitOfWork, delimiter, ignoreInvalidEndpoints, cacheSize);
 }

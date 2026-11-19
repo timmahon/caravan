@@ -25,6 +25,21 @@ public class RoutingSlipTests : ContextTestBase
     }
 
     [Fact]
+    public async Task Routing_slip_string_is_a_simple_expression()
+    {
+        await StartWithRoutes(b =>
+        {
+            b.From("direct:start").RoutingSlip("direct:a,mock:${header.target}");
+            b.From("direct:a").Transform(e => e.Message.Body + "-a");
+        });
+        Mock("last").ExpectedBodiesReceived("x-a");
+
+        await Template.SendBodyAndHeaderAsync("direct:start", "x", "target", "last");
+
+        await MockEndpoint.AssertIsSatisfiedAsync(Context);
+    }
+
+    [Fact]
     public async Task Routing_slip_returns_the_reply_of_the_last_step()
     {
         await StartWithRoutes(b =>

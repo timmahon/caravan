@@ -1,3 +1,4 @@
+using Caravan.Language;
 using Caravan.Model;
 using Caravan.Processors;
 
@@ -22,6 +23,19 @@ public static class RoutingSlipDsl
         steps.AddStep(new RoutingSlipDefinition(expression) { UriDelimiter = uriDelimiter, IgnoreInvalidEndpoints = ignoreInvalidEndpoints, CacheSize = cacheSize });
         return steps;
     }
+
+    /// <summary>
+    /// Sends the exchange through the endpoints of <paramref name="slip"/>, a Simple expression (see <see cref="SimpleLanguage"/>) evaluated once,
+    /// e.g. <c>.RoutingSlip("${header.slip}")</c> or <c>.RoutingSlip("direct:a,mock:${header.target}")</c>.
+    /// </summary>
+    /// <param name="steps">The block to add to.</param>
+    /// <param name="slip">The slip as a Simple expression.</param>
+    /// <param name="uriDelimiter">Splits a string slip (default <c>,</c>); null to not split.</param>
+    /// <param name="ignoreInvalidEndpoints">Skip endpoints that cannot be resolved instead of failing the exchange.</param>
+    /// <param name="cacheSize">Maximum cached producers (default 1000; negative disables caching).</param>
+    /// <exception cref="Language.Simple.SimpleParseException">The slip is not a valid Simple expression.</exception>
+    public static T RoutingSlip<T>(this T steps, string slip, string? uriDelimiter = ",", bool ignoreInvalidEndpoints = false, int cacheSize = ProducerCache.DefaultCacheSize)
+        where T : RouteSteps => steps.RoutingSlip(SimpleLanguage.Expression(slip), uriDelimiter, ignoreInvalidEndpoints, cacheSize);
 
     /// <summary>Sends the exchange through the endpoints returned once by <paramref name="expression"/>, in sequence.</summary>
     /// <param name="steps">The block to add to.</param>
