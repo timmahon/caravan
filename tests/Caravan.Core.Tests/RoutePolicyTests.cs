@@ -100,7 +100,8 @@ public class RoutePolicyTests : ContextTestBase
 
         await TestHelpers.WaitUntilAsync(() => route.InflightCount == 3);
         gates["a"].SetResult();
-        await TestHelpers.WaitUntilAsync(() => route.Consumer is IService { Status: ServiceStatus.Suspending or ServiceStatus.Suspended });
+        // Paused (not only Suspending): from then on the consumer takes nothing from the queue.
+        await TestHelpers.WaitUntilAsync(() => route.Consumer is SedaConsumer { IsPaused: true });
 
         await Template.SendBodyAsync("seda:in", "d");
         var endpoint = Context.GetEndpoint<SedaEndpoint>("seda:in");

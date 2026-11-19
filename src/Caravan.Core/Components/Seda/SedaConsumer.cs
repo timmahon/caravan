@@ -45,6 +45,18 @@ internal sealed class SedaConsumer : ConsumerBase, IShutdownAware
         }
     }
 
+    /// <summary>Whether taking is paused (suspension or graceful shutdown in progress, or done).</summary>
+    internal bool IsPaused
+    {
+        get
+        {
+            lock (_gate)
+            {
+                return _paused;
+            }
+        }
+    }
+
     public int PendingExchangesSize
     {
         get
