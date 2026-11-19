@@ -11,6 +11,9 @@ namespace Caravan.Impl;
 /// <item>Waits until no exchange is inflight in the routes and, for routes with
 /// <see cref="ShutdownRunningTask.CompleteAllTasks"/>, no message is pending in their consumers.</item>
 /// <item>Stops (or suspends) the deferred consumers.</item>
+/// <item>When stopping, tells the routes' shutdown-aware services (<see cref="IShutdownAware"/> processors such as the aggregator and
+/// the resequencers) to prepare, so they emit what they hold, then waits until they report no pending exchanges and no exchange is
+/// inflight.</item>
 /// </list>
 /// When <see cref="Timeout"/> elapses first, the inflight exchanges are logged, shutdown-aware consumers are forced
 /// (they cancel their work) and, on context shutdown, <see cref="ICaravanContext.ShutdownToken"/> is cancelled.
@@ -86,6 +89,11 @@ public sealed class DefaultShutdownStrategy : IShutdownStrategy
             {
                 aware.PrepareShutdown(route.Definition.ShutdownRunningTask, suspendOnly, forced: true);
             }
+
+            foreach (var service in ShutdownAwareServices(route))
+            {
+                service.PrepareShutdown(route.Definition.ShutdownRunningTask, suspendOnly, forced: true);
+            }
         }
 
         if (!suspendOnly && context is CaravanContext { Status: ServiceStatus.Stopping } caravan)
@@ -137,7 +145,7 @@ public sealed class DefaultShutdownStrategy : IShutdownStrategy
             }
         }
 
-        await WaitForInflightAsync(context, routes, suspendOnly, logger, force, cancellationToken).ConfigureAwait(false);
+        await WaitForInflightAsync(context, routes, suspendOnly, includeServices: false, logger, force, cancellationToken).ConfigureAwait(false);
 
         foreach (var route in deferred)
         {
@@ -146,7 +154,35 @@ public sealed class DefaultShutdownStrategy : IShutdownStrategy
                 await StopConsumerAsync(route, consumer, suspendOnly, logger, cancellationToken).ConfigureAwait(false);
             }
         }
+
+        if (suspendOnly)
+        {
+            return;
+        }
+
+        // No new work arrives any more: the routes' shutdown-aware services (aggregator, resequencer) may now emit what they hold,
+        // and the exchanges they send are awaited like inflight ones.
+        foreach (var route in routes)
+        {
+            foreach (var service in ShutdownAwareServices(route))
+            {
+                try
+                {
+                    service.PrepareShutdown(route.Definition.ShutdownRunningTask, suspendOnly: false, forced: false);
+                }
+                catch (Exception e)
+                {
+                    logger.LogWarning(e, "Error preparing service {Service} of route {RouteId} for shutdown", service, route.Id);
+                }
+            }
+        }
+
+        await WaitForInflightAsync(context, routes, suspendOnly, includeServices: true, logger, force, cancellationToken).ConfigureAwait(false);
     }
+
+    /// <summary>The services of a route that take part in shutdown (Camel's <c>ShutdownPrepared</c>/<c>ShutdownAware</c> route services).</summary>
+    private static IEnumerable<IShutdownAware> ShutdownAwareServices(IRoute route) =>
+        route is Route { RouteContext: var routeContext } ? routeContext.Services.OfType<IShutdownAware>().Distinct() : [];
 
     private static async Task StopConsumerAsync(IRoute route, IConsumer consumer, bool suspendOnly, ILogger logger, CancellationToken cancellationToken)
     {
@@ -171,6 +207,7 @@ public sealed class DefaultShutdownStrategy : IShutdownStrategy
         ICaravanContext context,
         IReadOnlyList<IRoute> routes,
         bool suspendOnly,
+        bool includeServices,
         ILogger logger,
         CancellationToken force,
         CancellationToken cancellationToken)
@@ -190,6 +227,11 @@ public sealed class DefaultShutdownStrategy : IShutdownStrategy
                     route.Consumer is IShutdownAware aware and IService { Status: ServiceStatus.Started })
                 {
                     pending += aware.PendingExchangesSize;
+                }
+
+                if (includeServices)
+                {
+                    pending += ShutdownAwareServices(route).Sum(s => s.PendingExchangesSize);
                 }
             }
 

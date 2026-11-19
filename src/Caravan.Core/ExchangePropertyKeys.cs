@@ -56,4 +56,38 @@ public static class ExchangePropertyKeys
     public const string GroupedExchange = "CaravanGroupedExchange";
     /// <summary>Set to false by a <c>scheduler</c> route to report that the poll found no work (drives idle backoff).</summary>
     public const string SchedulerPolledMessages = "CaravanSchedulerPolledMessages";
+    /// <summary>The number of exchanges aggregated into an <c>aggregate</c> group (set on the aggregated exchange).</summary>
+    public const string AggregatedSize = "CaravanAggregatedSize";
+    /// <summary>
+    /// What completed an <c>aggregate</c> group: <c>size</c>, <c>timeout</c>, <c>interval</c>, <c>predicate</c>, <c>consumer</c>,
+    /// <c>force</c> or <c>strategy</c> (see <see cref="Aggregation.AggregationCompletedBy"/>).
+    /// </summary>
+    public const string AggregatedCompletedBy = "CaravanAggregatedCompletedBy";
+    /// <summary>The correlation key of a completed <c>aggregate</c> group.</summary>
+    public const string AggregatedCorrelationKey = "CaravanAggregatedCorrelationKey";
+    /// <summary>The completion timeout (a <see cref="TimeSpan"/>) of an <c>aggregate</c> group completed by timeout.</summary>
+    public const string AggregatedTimeout = "CaravanAggregatedTimeout";
+    /// <summary>
+    /// Set to true by an aggregation strategy on the exchange it returns to complete the current <c>aggregate</c> group
+    /// (completed by <c>strategy</c>).
+    /// </summary>
+    public const string AggregationCompleteCurrentGroup = "CaravanAggregationCompleteCurrentGroup";
+    /// <summary>
+    /// As a header on an exchange sent to an <c>aggregate</c>: completes all groups, and the exchange itself is not aggregated. As a
+    /// property set by an aggregation strategy on the exchange it returns: completes all groups, the current one included.
+    /// </summary>
+    public const string AggregationCompleteAllGroups = "CaravanAggregationCompleteAllGroups";
+    /// <summary>A header on an exchange sent to an <c>aggregate</c>: the exchange is aggregated, then all groups are completed.</summary>
+    public const string AggregationCompleteAllGroupsInclusive = "CaravanAggregationCompleteAllGroupsInclusive";
+    /// <summary>
+    /// The version of an exchange read from an <see cref="Spi.IOptimisticLockingAggregationRepository"/> that keeps versions on the
+    /// exchange (such as <see cref="Aggregation.MemoryAggregationRepository"/> with optimistic locking).
+    /// </summary>
+    public const string AggregationRepositoryVersion = "CaravanAggregationRepositoryVersion";
+    /// <summary>The number of exchanges in the batch a batch consumer polled (drives <c>completionFromBatchConsumer</c>).</summary>
+    public const string BatchSize = "CaravanBatchSize";
+    /// <summary>The index (0-based) of the exchange in the batch a batch consumer polled.</summary>
+    public const string BatchIndex = "CaravanBatchIndex";
+    /// <summary>True on the last exchange of the batch a batch consumer polled.</summary>
+    public const string BatchComplete = "CaravanBatchComplete";
 }
