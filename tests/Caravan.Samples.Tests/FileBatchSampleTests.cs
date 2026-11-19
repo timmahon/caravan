@@ -27,7 +27,9 @@ public sealed class FileBatchSampleTests : IDisposable
         var report = await WaitForReportAsync(outbox);
 
         Assert.Equal("a.csv: 2 lines, total 12.50\nb.csv: 1 lines, total 7.25\nTOTAL: 2 files, 3 lines, 19.75", report.ReplaceLineEndings("\n"));
-        Assert.True(File.Exists(Path.Combine(inbox, ".done", "a.csv")));
+        // Each file is moved once its own exchange completes; the report may be written while the last file
+        // of the poll (in directory order, which is not guaranteed) is still in flight.
+        await WaitUntilAsync(() => File.Exists(Path.Combine(inbox, ".done", "a.csv")) && File.Exists(Path.Combine(inbox, ".done", "b.csv")));
         Assert.True(File.Exists(Path.Combine(inbox, "ignored.txt")));
     }
 
@@ -39,6 +41,20 @@ public sealed class FileBatchSampleTests : IDisposable
         }
         catch (IOException)
         {
+        }
+    }
+
+    private static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new TimeoutException("The processed files were not moved to .done");
+            }
+
+            await Task.Delay(10);
         }
     }
 
