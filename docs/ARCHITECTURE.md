@@ -80,10 +80,21 @@ Each EIP is four pieces, each type in its own file named after the type:
    `.Choice(c => c.When(p, r => r.To("mock:a")).Otherwise(r => r.To("mock:b")))`.
    Offer typed overloads where useful (`Func<TBody, bool>` predicates etc.); users write explicitly typed
    lambdas like `.Filter((Order o) => o.Total > 0)` so C# can infer the type parameters.
+   When a step needs a type that cannot be inferred from an argument (e.g. `convertBodyTo`), take a `Type`
+   parameter (`.ConvertBodyTo(typeof(int))`): C# cannot infer `T` from the receiver while the caller gives
+   another type argument explicitly, and C# 14 extension blocks do not help either, because an explicit type
+   argument binds to the block's own type parameter. Options go in optional named parameters
+   (`.ToD(uri, cacheSize: 10)`). Add a lambda-shape case to `DslOverloadTests` for every new overload set, so
+   that an ambiguity such as `_ => throw ...` matching two overloads fails the build.
 4. **Tests** in `tests/Caravan.Core.Tests/` using `ContextTestBase` and mock endpoints.
 
 Use exchange property names from `ExchangePropertyKeys` (add new ones there) and keep Camel's semantics
 unless there is a documented reason to differ (note it in the definition's XML doc).
+
+Expressions and predicates: `Expr` (values), `Pred` (predicate factories and combinators) and the
+`PredicateExtensions` on `IExpression` (`IsEqualTo`, `IsGreaterThan`, `Contains`, `Regex`, `In`, ...), which
+coerce types like Camel (`Support.ObjectHelper`). String options that accept `${...}` tokens (`toD`, `wireTap`,
+the `log` EIP) go through `Support.TokenTemplate`, an interim stand-in to be replaced by the Simple language.
 
 ## Adding a component
 
