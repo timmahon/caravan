@@ -90,15 +90,29 @@ public sealed class FileOperations : IGenericFileOperations<FileInfo>
     /// <inheritdoc />
     public IReadOnlyList<GenericFile<FileInfo>> ListFiles(string directory)
     {
+        var files = new List<GenericFile<FileInfo>>();
         try
         {
-            return [.. new DirectoryInfo(directory).EnumerateFileSystemInfos().Select(AsGenericFile)];
+            foreach (var info in new DirectoryInfo(directory).EnumerateFileSystemInfos())
+            {
+                try
+                {
+                    files.Add(AsGenericFile(info));
+                }
+                catch (Exception e) when (e is FileNotFoundException or DirectoryNotFoundException)
+                {
+                    // Deleted between being enumerated and having its attributes read (for example another
+                    // consumer's marker file): skip it, as Camel does for files that disappear while polling.
+                }
+            }
         }
         catch (DirectoryNotFoundException)
         {
-            // Deleted while polling.
+            // The directory itself was deleted while polling.
             return [];
         }
+
+        return files;
     }
 
     /// <inheritdoc />
