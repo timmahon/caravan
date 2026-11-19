@@ -1,8 +1,10 @@
 <Solution>
   <Folder Name="/src/">
     <Project Path="src/Caravan.Core/Caravan.Core.csproj" />
+    <Project Path="src/Caravan.Testing/Caravan.Testing.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/Caravan.Core.Tests/Caravan.Core.Tests.csproj" />
+    <Project Path="tests/Caravan.Testing.Tests/Caravan.Testing.Tests.csproj" />
   </Folder>
 </Solution>

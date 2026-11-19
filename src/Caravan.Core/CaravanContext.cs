@@ -103,7 +103,8 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     public IList<IInterceptStrategy> InterceptStrategies { get; } = new List<IInterceptStrategy>();
 
     /// <inheritdoc />
-    public IList<IEventNotifier> EventNotifiers { get; } = new List<IEventNotifier>();
+    /// <remarks>Thread-safe: notifiers may be added or removed while exchanges are routed.</remarks>
+    public IList<IEventNotifier> EventNotifiers { get; } = new CopyOnWriteList<IEventNotifier>();
 
     /// <inheritdoc />
     public IList<IPropertiesSource> PropertiesSources { get; } = new List<IPropertiesSource>();
@@ -466,7 +467,18 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             }
 
             var endpoint = GetEndpoint(definition.FromUri);
+            RegisterInterceptSendToEndpoints(definition);
+            var intercepts = definition.Intercepts
+                .Where(i => !i.Disabled)
+                .Select(i => new InterceptNodeStrategy(i, InterceptFromProcessor.BuildBlock(routeContext, i), endpoint.EndpointUri))
+                .ToList();
+            foreach (var intercept in intercepts)
+            {
+                routeContext.InterceptStrategies.Add(intercept);
+            }
+
             var pipeline = routeContext.CreateBlockProcessor(definition.Outputs);
+            pipeline = InterceptFromProcessor.Wrap(routeContext, endpoint, pipeline);
             pipeline = OnCompletionProcessor.Wrap(routeContext, pipeline);
             var route = new Route(routeContext, endpoint, pipeline);
             lock (_routesLock)
@@ -480,6 +492,18 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         catch (Exception e) when (e is not FailedToCreateRouteException)
         {
             throw new FailedToCreateRouteException(routeId, e.Message, e);
+        }
+    }
+
+    private void RegisterInterceptSendToEndpoints(RouteDefinition definition)
+    {
+        var interceptors = SendToEndpointInterceptors.For(this);
+        foreach (var intercept in definition.InterceptSendToEndpoints.Where(i => !i.Disabled))
+        {
+            var interceptor = interceptors.GetOrAdd(
+                existing => ReferenceEquals(existing.Definition, intercept),
+                () => new InterceptSendToEndpointInterceptor(this, intercept));
+            AddServiceAsync(interceptor).GetAwaiter().GetResult();
         }
     }
 

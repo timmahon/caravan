@@ -119,4 +119,19 @@ public static class ExchangePropertyKeys
     public const string ResponseRejected = "CaravanResponseRejected";
     /// <summary>The state of the circuit (a <see cref="Caravan.CircuitBreakerState"/> name) after a <c>circuitBreaker</c> call (Camel's <c>CamelCircuitBreakerState</c>).</summary>
     public const string CircuitBreakerState = "CaravanCircuitBreakerState";
+
+    /// <summary>The id of the route whose node an <c>intercept</c> block is running before (Camel's <c>CamelInterceptedRouteId</c>).</summary>
+    public const string InterceptedRouteId = "CaravanInterceptedRouteId";
+
+    /// <summary>The id of the node an <c>intercept</c> block is running before (Camel's <c>CamelInterceptedNodeId</c>).</summary>
+    public const string InterceptedNodeId = "CaravanInterceptedNodeId";
+
+    /// <summary>The endpoint URI of the route whose node an <c>intercept</c> block is running before (Camel's <c>CamelInterceptedRouteEndpointUri</c>).</summary>
+    public const string InterceptedRouteEndpointUri = "CaravanInterceptedRouteEndpointUri";
+
+    /// <summary>The URI of the route's endpoint, set by <c>interceptFrom</c> (as the header of the same name).</summary>
+    public const string InterceptedEndpoint = CaravanHeaders.InterceptedEndpoint;
+
+    /// <summary>Internal: the <c>interceptSendToEndpoint</c> interceptors whose block the exchange is running (they do not intercept it again).</summary>
+    internal const string InterceptSendToEndpointActive = "CaravanInterceptSendToEndpointActive";
 }

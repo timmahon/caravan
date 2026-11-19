@@ -243,4 +243,26 @@ public class DslOverloadTests : ContextTestBase
 
         Assert.Equal(15, route.Outputs.Count);
     }
+
+    [Fact]
+    public void Intercept_lambda_shapes_bind_to_a_single_overload()
+    {
+        var route = RouteBuilder.Create(b =>
+        {
+            b.Intercept(i => i.To("mock:a"));
+            b.Intercept(i => i.When(_ => true).Stop());
+            b.Intercept(i => i.When(Expr.Body().IsNull()).Process(_ => throw new InvalidOperationException()));
+            b.InterceptFrom(_ => { });
+            b.InterceptFrom("direct:*", i => i.When(e => e.Message.Body is null).To("mock:b"));
+            b.InterceptFrom(null, _ => { });
+            b.InterceptSendToEndpoint("mock:*");
+            b.InterceptSendToEndpoint("mock:*", i => i.To("mock:c"), skipSendToOriginalEndpoint: true, afterUri: "mock:d");
+            b.InterceptSendToEndpoint("mock:*", i => i.When(_ => throw new InvalidOperationException()).SkipSendToOriginalEndpoint().AfterUri("mock:e"));
+            b.From("direct:start").To("mock:f");
+        }).Build(Context).Single();
+
+        Assert.Equal(3, route.Intercepts.Count);
+        Assert.Equal(3, route.InterceptFroms.Count);
+        Assert.Equal(3, route.InterceptSendToEndpoints.Count);
+    }
 }
