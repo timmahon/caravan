@@ -37,6 +37,23 @@ public static class ExchangePropertyKeys
     public const string TimerPeriod = "CaravanTimerPeriod";
     /// <summary>How many times the timer has fired (starting at 1).</summary>
     public const string TimerCounter = "CaravanTimerCounter";
+    /// <summary>The index (0-based) of the branch of a <c>multicast</c> or <c>recipientList</c> processing the exchange.</summary>
+    public const string MulticastIndex = "CaravanMulticastIndex";
+    /// <summary>True on the last branch of a <c>multicast</c> or <c>recipientList</c>.</summary>
+    public const string MulticastComplete = "CaravanMulticastComplete";
+    /// <summary>The index (0-based) of the split message.</summary>
+    public const string SplitIndex = "CaravanSplitIndex";
+    /// <summary>
+    /// The number of split messages: set on every split message when the splitter is not streaming, and only on the last one
+    /// when streaming (the total is unknown until then).
+    /// </summary>
+    public const string SplitSize = "CaravanSplitSize";
+    /// <summary>True on the last split message.</summary>
+    public const string SplitComplete = "CaravanSplitComplete";
+    /// <summary>The URI of the endpoint a <c>recipientList</c> branch is sent to.</summary>
+    public const string RecipientListEndpoint = "CaravanRecipientListEndpoint";
+    /// <summary>Holds the list being built by the grouped and string aggregation strategies until the aggregation completes.</summary>
+    public const string GroupedExchange = "CaravanGroupedExchange";
     /// <summary>Set to false by a <c>scheduler</c> route to report that the poll found no work (drives idle backoff).</summary>
     public const string SchedulerPolledMessages = "CaravanSchedulerPolledMessages";
 }
