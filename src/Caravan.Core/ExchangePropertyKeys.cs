@@ -21,4 +21,16 @@ public static class ExchangePropertyKeys
     public const string CreatedTimestamp = "CaravanCreatedTimestamp";
     /// <summary>The id of the <c>step</c> the exchange is currently in.</summary>
     public const string StepId = "CaravanStepId";
+    /// <summary>Overrides the endpoint's <see cref="WaitForTaskToComplete"/> for one exchange sent to <c>seda</c>.</summary>
+    public const string AsyncWait = "CaravanAsyncWait";
+    /// <summary>The name of the timer that fired the exchange.</summary>
+    public const string TimerName = "CaravanTimerName";
+    /// <summary>When the timer fired the exchange.</summary>
+    public const string TimerFiredTime = "CaravanTimerFiredTime";
+    /// <summary>The period of the timer that fired the exchange.</summary>
+    public const string TimerPeriod = "CaravanTimerPeriod";
+    /// <summary>How many times the timer has fired (starting at 1).</summary>
+    public const string TimerCounter = "CaravanTimerCounter";
+    /// <summary>Set to false by a <c>scheduler</c> route to report that the poll found no work (drives idle backoff).</summary>
+    public const string SchedulerPolledMessages = "CaravanSchedulerPolledMessages";
 }

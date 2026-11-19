@@ -5,7 +5,8 @@ namespace Caravan.Impl;
 
 /// <summary>
 /// The first processor of every route: assigns the route id, opens a unit of work when the exchange
-/// does not have one yet, tracks inflight exchanges and completes the unit of work at the end.
+/// does not have one yet, tracks inflight exchanges (route counter and <see cref="ICaravanContext.InflightRepository"/>)
+/// and completes the unit of work at the end.
 /// </summary>
 internal sealed class RouteProcessor(Route route, IProcessor pipeline) : INavigableProcessor
 {
@@ -30,7 +31,9 @@ internal sealed class RouteProcessor(Route route, IProcessor pipeline) : INaviga
 
         var previousRouteId = exchange.CurrentRouteId;
         exchange.CurrentRouteId = route.Id;
+        var inflight = context.InflightRepository;
         route.IncrementInflight();
+        inflight.Add(exchange, route.Id);
         try
         {
             await pipeline.ProcessAsync(exchange).ConfigureAwait(false);
@@ -42,15 +45,26 @@ internal sealed class RouteProcessor(Route route, IProcessor pipeline) : INaviga
         finally
         {
             exchange.CurrentRouteId = previousRouteId;
-            route.DecrementInflight();
+            try
+            {
+                if (unitOfWork is not null)
+                {
+                    await unitOfWork.DoneAsync(exchange).ConfigureAwait(false);
+                    if (ReferenceEquals(exchange.UnitOfWork, unitOfWork))
+                    {
+                        exchange.UnitOfWork = null;
+                    }
+                }
+            }
+            finally
+            {
+                // The unit of work's callbacks are part of the exchange's work: count them as inflight.
+                route.DecrementInflight();
+                inflight.Remove(exchange, route.Id);
+            }
+
             if (unitOfWork is not null)
             {
-                await unitOfWork.DoneAsync(exchange).ConfigureAwait(false);
-                if (ReferenceEquals(exchange.UnitOfWork, unitOfWork))
-                {
-                    exchange.UnitOfWork = null;
-                }
-
                 EventHelper.Notify(
                     context,
                     exchange.IsFailed ? CaravanEventType.ExchangeFailed : CaravanEventType.ExchangeCompleted,

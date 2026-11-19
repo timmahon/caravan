@@ -28,6 +28,12 @@ public sealed class RouteDefinition
     /// <summary>Routes with a lower order start first and stop last.</summary>
     public int? StartupOrder { get; set; }
 
+    /// <summary>When the route's consumer stops during a graceful shutdown (default <see cref="Caravan.ShutdownRoute.Default"/>).</summary>
+    public ShutdownRoute ShutdownRoute { get; set; } = ShutdownRoute.Default;
+
+    /// <summary>How much pending work the route's consumer completes during a graceful shutdown (default <see cref="Caravan.ShutdownRunningTask.CompleteCurrentTaskOnly"/>).</summary>
+    public ShutdownRunningTask ShutdownRunningTask { get; set; } = ShutdownRunningTask.CompleteCurrentTaskOnly;
+
     /// <summary>A human-readable description of the route.</summary>
     public string? Description { get; set; }
 

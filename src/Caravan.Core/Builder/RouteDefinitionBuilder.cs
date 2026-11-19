@@ -50,6 +50,26 @@ public sealed class RouteDefinitionBuilder : RouteSteps
         return this;
     }
 
+    /// <summary>
+    /// Sets when the route's consumer stops during a graceful shutdown; use <see cref="Caravan.ShutdownRoute.Defer"/>
+    /// for routes fed by other routes so they keep consuming until the others are done.
+    /// </summary>
+    public RouteDefinitionBuilder ShutdownRoute(ShutdownRoute shutdownRoute)
+    {
+        Definition.ShutdownRoute = shutdownRoute;
+        return this;
+    }
+
+    /// <summary>
+    /// Sets how much pending work the consumer completes during a graceful shutdown;
+    /// <see cref="Caravan.ShutdownRunningTask.CompleteAllTasks"/> lets a <c>seda</c> consumer drain its queue.
+    /// </summary>
+    public RouteDefinitionBuilder ShutdownRunningTask(ShutdownRunningTask shutdownRunningTask)
+    {
+        Definition.ShutdownRunningTask = shutdownRunningTask;
+        return this;
+    }
+
     /// <summary>Sets an arbitrary route property.</summary>
     public RouteDefinitionBuilder RouteProperty(string key, object? value)
     {

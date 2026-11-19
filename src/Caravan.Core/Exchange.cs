@@ -12,6 +12,7 @@ namespace Caravan;
 public sealed class Exchange
 {
     private Message _message;
+    private List<ISynchronization>? _pendingCompletions;
 
     /// <summary>Creates an exchange with a new id and an empty message.</summary>
     public Exchange(ICaravanContext context, ExchangePattern pattern = ExchangePattern.InOnly)
@@ -79,6 +80,25 @@ public sealed class Exchange
 
     /// <summary>Unit-of-work hooks executed when the exchange completes.</summary>
     public IUnitOfWork? UnitOfWork { get; set; }
+
+    /// <summary>
+    /// Registers a callback run when the exchange completes: added to the <see cref="UnitOfWork"/> when there is one,
+    /// otherwise kept until a unit of work is created for the exchange (e.g. by the route that consumes it).
+    /// </summary>
+    public void AddOnCompletion(ISynchronization synchronization)
+    {
+        ArgumentNullException.ThrowIfNull(synchronization);
+        if (UnitOfWork is { } unitOfWork)
+        {
+            unitOfWork.AddSynchronization(synchronization);
+            return;
+        }
+
+        lock (this)
+        {
+            (_pendingCompletions ??= []).Add(synchronization);
+        }
+    }
 
     /// <summary>Gets a property, or null when it is not set.</summary>
     public object? GetProperty(string name) => Properties.TryGetValue(name, out var value) ? value : null;
@@ -189,6 +209,54 @@ public sealed class Exchange
         Exception = source.Exception;
         IsRouteStop = source.IsRouteStop;
         IsRollbackOnly = source.IsRollbackOnly;
+    }
+
+    /// <summary>Removes and returns the callbacks registered with <see cref="AddOnCompletion"/> before a unit of work existed.</summary>
+    internal List<ISynchronization>? TakePendingCompletions()
+    {
+        lock (this)
+        {
+            var pending = _pendingCompletions;
+            _pendingCompletions = null;
+            return pending;
+        }
+    }
+
+    /// <summary>Whether callbacks are waiting for a unit of work.</summary>
+    internal bool HasPendingCompletions
+    {
+        get
+        {
+            lock (this)
+            {
+                return _pendingCompletions is { Count: > 0 };
+            }
+        }
+    }
+
+    /// <summary>
+    /// Copies this exchange (same id) into another context, moving its pending completions along
+    /// (used by <c>vm</c> to hand an exchange to a consumer in another context).
+    /// </summary>
+    internal Exchange CopyToContext(ICaravanContext context)
+    {
+        if (ReferenceEquals(context, Context))
+        {
+            return this;
+        }
+
+        var copy = new Exchange(context, Pattern)
+        {
+            ExchangeId = ExchangeId,
+            Exception = Exception,
+            FromEndpoint = FromEndpoint,
+            IsRollbackOnly = IsRollbackOnly,
+            CancellationToken = CancellationToken,
+        };
+        copy._message = _message.Copy(copy);
+        copy.Properties = new Dictionary<string, object?>(Properties, StringComparer.Ordinal);
+        copy._pendingCompletions = TakePendingCompletions();
+        return copy;
     }
 
     /// <inheritdoc />

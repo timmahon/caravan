@@ -7,13 +7,21 @@ public sealed class DefaultUnitOfWork : IUnitOfWork
 {
     private readonly List<ISynchronization> _synchronizations = [];
 
-    /// <summary>Creates the unit of work for <paramref name="exchange"/>, keeping a copy of the original message when the context allows it.</summary>
+    /// <summary>
+    /// Creates the unit of work for <paramref name="exchange"/>, keeping a copy of the original message when the context allows it
+    /// and taking over the callbacks registered with <see cref="Exchange.AddOnCompletion"/>.
+    /// </summary>
     public DefaultUnitOfWork(Exchange exchange)
     {
         Exchange = exchange;
         if (exchange.Context.AllowUseOriginalMessage)
         {
             OriginalMessage = exchange.Message.Copy(exchange);
+        }
+
+        if (exchange.TakePendingCompletions() is { } pending)
+        {
+            _synchronizations.AddRange(pending);
         }
     }
 
@@ -56,17 +64,16 @@ public sealed class DefaultUnitOfWork : IUnitOfWork
         List<ISynchronization> moved;
         lock (_synchronizations)
         {
-            moved = _synchronizations.Where(s => filter?.Invoke(s) ?? true).ToList();
+            moved = _synchronizations.Where(s => s.AllowHandover && (filter?.Invoke(s) ?? true)).ToList();
             foreach (var s in moved)
             {
                 _synchronizations.Remove(s);
             }
         }
 
-        target.UnitOfWork ??= new DefaultUnitOfWork(target);
         foreach (var s in moved)
         {
-            target.UnitOfWork.AddSynchronization(s);
+            target.AddOnCompletion(s);
         }
     }
 
