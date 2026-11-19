@@ -94,6 +94,19 @@ public sealed class Exchange
     /// </summary>
     public bool IsRedeliveryExhausted { get; set; }
 
+    /// <summary>
+    /// Set on the sub exchanges of a <c>split</c>/<c>multicast</c>/<c>recipientList</c> with <c>shareUnitOfWork</c>: an error
+    /// handler that exhausts its redeliveries on such an exchange does not run its failure processor but leaves the failure
+    /// to the parent exchange's error handler. Not copied.
+    /// </summary>
+    internal bool IsSharedUnitOfWorkChild { get; set; }
+
+    /// <summary>
+    /// Set on a parent exchange that received the failure of a sub exchange processed with <c>shareUnitOfWork</c>: redelivery
+    /// was already attempted for the sub exchange, so the next error handler goes straight to its failure processor. Not copied.
+    /// </summary>
+    internal bool SuppressRedelivery { get; set; }
+
     /// <summary>Cancellation for this exchange, typically linked to the context shutdown.</summary>
     public CancellationToken CancellationToken { get; set; }
 

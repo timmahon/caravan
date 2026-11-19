@@ -17,6 +17,21 @@ public static class TestHelpers
     /// <summary>Awaits a task with a real-time bound so a broken test fails instead of hanging.</summary>
     public static Task<T> Bounded<T>(this Task<T> task) => task.WaitAsync(Wait);
 
+    /// <summary>Polls (bounded, in real time) until <paramref name="condition"/> holds, for state that raises no event.</summary>
+    public static async Task WaitUntilAsync(Func<bool> condition)
+    {
+        var deadline = DateTime.UtcNow + Wait;
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                throw new TimeoutException("Condition not reached in time");
+            }
+
+            await Task.Delay(1);
+        }
+    }
+
     /// <summary>A synchronization that records how the exchange completed.</summary>
     public sealed class RecordingSynchronization : ISynchronization
     {

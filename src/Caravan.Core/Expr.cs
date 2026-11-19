@@ -118,6 +118,48 @@ public static class Expr
             $"regexReplaceAll({expression},{regex},{replacementExpression})");
     }
 
+    /// <summary>
+    /// Tokenizes the body (Camel's <c>tokenize</c>): the parts of the text between occurrences of <paramref name="token"/>, read
+    /// lazily. The body may be a string, <see cref="TextReader"/>, <see cref="Stream"/>, byte array or anything convertible to a
+    /// string. Use it to split text: <c>.Split(Expr.Tokenize(","), ...)</c>. A trailing token does not produce an empty last part.
+    /// </summary>
+    /// <param name="token">The separator.</param>
+    /// <param name="regex">Whether <paramref name="token"/> is a regular expression.</param>
+    /// <param name="group">When above 1, joins that many parts (with the separators between them) into one value, e.g. to split a file in chunks of N lines.</param>
+    /// <param name="skipFirst">Skips the first part (e.g. a header line).</param>
+    public static IExpression Tokenize(string token, bool regex = false, int group = 0, bool skipFirst = false) =>
+        Tokenize(Body(), token, regex, group, skipFirst);
+
+    /// <summary>Tokenizes the value of <paramref name="source"/>; see <see cref="Tokenize(string, bool, int, bool)"/>.</summary>
+    /// <param name="source">The text to tokenize.</param>
+    /// <param name="token">The separator.</param>
+    /// <param name="regex">Whether <paramref name="token"/> is a regular expression.</param>
+    /// <param name="group">When above 1, joins that many parts into one value.</param>
+    /// <param name="skipFirst">Skips the first part.</param>
+    public static IExpression Tokenize(IExpression source, string token, bool regex = false, int group = 0, bool skipFirst = false)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(token);
+        var separator = new System.Text.RegularExpressions.Regex(
+            regex ? token : System.Text.RegularExpressions.Regex.Escape(token),
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        return new FuncExpression(e => TokenIterator.Create(e, source.Evaluate(e), separator, group, skipFirst), $"tokenize({source},{token})");
+    }
+
+    /// <summary>
+    /// The lines of the body (separated by <c>\n</c>, <c>\r\n</c> or <c>\r</c>), read lazily: use it to split large text or streams
+    /// line by line, e.g. <c>.Split(Expr.Lines(), ..., streaming: true)</c>. See <see cref="Tokenize(string, bool, int, bool)"/>.
+    /// </summary>
+    /// <param name="group">When above 1, joins that many lines into one value.</param>
+    /// <param name="skipFirst">Skips the first line (e.g. a header).</param>
+    public static IExpression Lines(int group = 0, bool skipFirst = false) => Lines(Body(), group, skipFirst);
+
+    /// <summary>The lines of the value of <paramref name="source"/>; see <see cref="Lines(int, bool)"/>.</summary>
+    /// <param name="source">The text to split in lines.</param>
+    /// <param name="group">When above 1, joins that many lines into one value.</param>
+    /// <param name="skipFirst">Skips the first line.</param>
+    public static IExpression Lines(IExpression source, int group = 0, bool skipFirst = false) =>
+        Tokenize(source, "\\r\\n|\\n|\\r", regex: true, group, skipFirst);
+
     /// <summary>Returns <paramref name="value"/> itself when it is an <see cref="IExpression"/>, otherwise a constant expression for it.</summary>
     public static IExpression Of(object? value) => value as IExpression ?? Constant(value);
 }

@@ -44,6 +44,7 @@ public sealed class RedeliveryErrorHandler : INavigableProcessor
         {
             // A failure that was dealt with earlier (caught, continued, cleared) no longer counts as exhausted.
             exchange.IsRedeliveryExhausted = false;
+            exchange.SuppressRedelivery = false;
         }
 
         var original = _factory.RedeliveryEnabled ? exchange.Message.Copy(exchange) : null;
@@ -80,7 +81,9 @@ public sealed class RedeliveryErrorHandler : INavigableProcessor
 
             await NotifyExceptionOccurredAsync(exchange, policy).ConfigureAwait(false);
 
-            if (!ShouldRedeliver(exchange, original, redelivery, counter, retryWhile))
+            var suppressRedelivery = exchange.SuppressRedelivery;
+            exchange.SuppressRedelivery = false;
+            if (suppressRedelivery || !ShouldRedeliver(exchange, original, redelivery, counter, retryWhile))
             {
                 await DeliverToFailureProcessorAsync(exchange, exception, policy, redelivery, counter).ConfigureAwait(false);
                 return;
@@ -195,6 +198,13 @@ public sealed class RedeliveryErrorHandler : INavigableProcessor
 
     private async ValueTask DeliverToFailureProcessorAsync(Exchange exchange, Exception caught, ExceptionPolicy? policy, RedeliveryPolicy redelivery, int attempts)
     {
+        if (exchange.IsSharedUnitOfWorkChild)
+        {
+            // A sub exchange sharing its parent's unit of work: the parent's error handler deals with the failure.
+            exchange.IsRedeliveryExhausted = true;
+            return;
+        }
+
         var definition = _factory.Definition;
         var processor = policy?.Processor ?? _factory.DeadLetter;
         var isDeadLetterChannel = processor is not null && ReferenceEquals(processor, _factory.DeadLetter);

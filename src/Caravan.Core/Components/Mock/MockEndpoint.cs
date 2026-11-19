@@ -344,7 +344,13 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
         {
             try
             {
-                await _countReached.Task.WaitAsync(wait).ConfigureAwait(false);
+                Task countReached;
+                lock (_lock)
+                {
+                    countReached = _countReached.Task;
+                }
+
+                await countReached.WaitAsync(wait).ConfigureAwait(false);
             }
             catch (TimeoutException)
             {
@@ -427,10 +433,18 @@ public sealed class MockEndpoint(string uri, MockComponent component, string nam
 
     private void CheckCountReached()
     {
-        var count = ReceivedCounter;
-        if ((_expectedCount > 0 && count >= _expectedCount) || (_expectedMinimumCount > 0 && count >= _expectedMinimumCount))
+        lock (_lock)
         {
-            _countReached.TrySetResult();
+            var count = _receivedCounter;
+            if ((_expectedCount > 0 && count >= _expectedCount) || (_expectedMinimumCount > 0 && count >= _expectedMinimumCount))
+            {
+                _countReached.TrySetResult();
+            }
+            else if (_countReached.Task.IsCompleted)
+            {
+                // The expectation was raised after an earlier one was met: wait for the new count.
+                _countReached = NewTcs();
+            }
         }
     }
 

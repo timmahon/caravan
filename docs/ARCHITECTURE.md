@@ -39,6 +39,9 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `IInflightRepository` | Exchanges being routed, per route, with durations (fed by `RouteProcessor`) | `InflightRepository` |
 | `IShutdownStrategy` / `IShutdownAware` | Graceful stop/suspend of routes; consumers that queue or loop take part | `ShutdownStrategy` / `ShutdownAware` |
 | `SupervisingRouteController` | Retries routes that fail to start, with backoff | `SupervisingRouteController` |
+| `IAggregationStrategy` / `AggregationStrategies` | Combine exchanges (multicast, split, recipient list; later the aggregator) | `AggregationStrategy` / `AggregationStrategies` |
+| `MulticastProcessor` | Fan-out engine of `multicast`, `split` (`SplitProcessor`) and `recipientList` (`RecipientListProcessor`) | `MulticastProcessor` |
+| `ProducerCache` | LRU cache of started senders per endpoint, for dynamic endpoints (`toD`, `wireTap`, `recipientList`) | `ProducerCache` |
 
 ### Error semantics
 
@@ -99,6 +102,55 @@ the dead letter endpoint and `onException` blocks see the redelivery headers, wh
 or continued; `AfterConsumer` `onCompletion` blocks run on a copy because the unit of work completes before a `direct` caller
 gets the reply; `markRollbackOnlyLast` scopes to the current route since there are no transactions.
 
+### Multicast, split and recipient list
+
+`multicast`, `split` and `recipientList` share one engine, `MulticastProcessor` (options: `MulticastSettings`; definitions derive
+from `FanOutDefinition`, DSL options are named parameters such as `.Split(Expr.Tokenize(","), s => ..., parallelProcessing: true)`).
+`SplitProcessor` and `RecipientListProcessor` only supply the branches (`CreateBranchesAsync`) and the branch properties.
+
+- **Branches.** Each branch processes a correlated copy (`CreateCorrelatedCopy`) of the input exchange. Multicast branches are the steps
+  of its block (each built with `CreateNodeProcessor`), a split runs its block (`CreateBlockProcessor`) per part, a recipient list sends
+  through a `ProducerCache`, each send wrapped with the route's `IErrorHandlerFactory`. So error handling applies *per branch*: a
+  failing step is redelivered and handled (dead letter channel, `onException` with `handled`) inside its branch, and the EIP continues.
+  `stop` in a branch only ends that branch. Properties: `CaravanMulticastIndex`/`CaravanMulticastComplete` (multicast, recipient list,
+  plus `CaravanRecipientListEndpoint`), `CaravanSplitIndex`/`CaravanSplitSize`/`CaravanSplitComplete` (split).
+- **Unit of work.** Each branch gets its own `DefaultUnitOfWork`, completed when the branch is done (before aggregation). With
+  `shareUnitOfWork` the branch uses the input exchange's unit of work instead (completion callbacks run with the parent,
+  `useOriginalMessage` sees the parent's message) and is flagged so its error handler, once redelivery is exhausted, does not run its
+  failure processor; the failure is set on the input exchange with redelivery suppressed, so the parent's error handler goes straight to
+  its failure processor (Camel's `SplitSubUnitOfWorkTest` behaviour).
+- **Aggregation.** `IAggregationStrategy.Aggregate(old, new)` (and the input-aware overload) is called for every branch, failed ones
+  included, in branch order; the final result gets `OnCompletion` and is copied into the input exchange (message replaced, properties
+  merged, exception and failure flags taken over). Failures propagate only if the strategy keeps them: the defaults do — `multicast`
+  and `recipientList` use `UseLatestAggregationStrategy`, `split` uses `UseOriginalAggregationStrategy` with exception propagation (the
+  input exchange continues unchanged, failing if a part failed). The input exchange keeps the failed branch's `IsRedeliveryExhausted`,
+  so enclosing error handlers do not handle the failure a second time. `stopOnException` stops at the first failed branch (exception,
+  rollback, or a failure an error handler handled) and fails the input exchange with `CaravanExchangeException("Multicast processing
+  failed for number N")` (or takes the handled branch as the result). The strategy API also carries the aggregator's hooks for PR 6:
+  `OnTimeout`, `CanPreComplete`/`PreComplete`. Built-ins (`Caravan.Aggregation`, factories on `AggregationStrategies`): UseLatest,
+  UseOriginal, GroupedExchange, GroupedBody, GroupedMessage, String, `From(lambda)`, `Body<TItem, TResult>(fold)`, `Flexible<T>()`.
+  `aggregationStrategyRef` looks a strategy up in the registry when the route is built. Keep per-aggregation state on the exchanges
+  (the grouped strategies use the `CaravanGroupedExchange` property), never in strategy fields: one instance serves all exchanges.
+- **Parallel processing.** Branches run on the thread pool, bounded by a `SemaphoreSlim` of `maxDegreeOfParallelism` slots (default
+  10, Camel's default pool size); branches are created lazily as slots free up, so a streaming split of a huge input never holds more than
+  that many parts in flight. Aggregation is serialized under a lock and done in branch order (early results are buffered) unless
+  `streaming` (completion order); `parallelAggregate` (streaming only) lets strategy calls run concurrently. A slot is released only after
+  the branch's result was aggregated, so `stopOnException` deterministically prevents further dispatch. The processor waits for every
+  started branch, except after `timeout` (parallel only, measured on `context.TimeProvider`): unfinished branches get `OnTimeout`, are
+  cancelled through their `Exchange.CancellationToken` and ignored; they are tracked and the processor's stop waits for them.
+- **Splitting values.** A split expression may return an `IEnumerable` (not a string), array, `IAsyncEnumerable<T>`, a `Message` per
+  part, null (no parts) or a single value. Non-streaming splits read all parts first (`CaravanSplitSize` on every part); streaming splits
+  read one part ahead of processing (to know the last one) and set the size on the last part only. `Expr.Tokenize(token, regex, group,
+  skipFirst)` / `Expr.Lines()` (and `.Tokenize(...)`/`.TokenizeLines()` on any expression) read strings, readers, streams or bytes
+  lazily in chunks, synchronously or asynchronously.
+- **Cancellation.** When the input exchange's `CancellationToken` is cancelled no further branch starts, running branches are awaited,
+  and the input exchange fails with an `OperationCanceledException`.
+
+Differences from Camel: a string is not split on commas by default (only with the `delimiter` option or a tokenizer); `stop` in a
+branch never stops the parent; with `shareUnitOfWork` a branch failure is always left to the parent's error handler (sub-level
+`onException` handling is skipped); the timeout is ignored without parallel processing (as Camel) and cancels unfinished branches
+(Camel lets them run); there is no executor service option, only `maxDegreeOfParallelism`.
+
 ### Endpoint URIs
 
 - `scheme:path?k=v&k2=v2` (also `scheme://path`). Values may use `RAW(...)` to avoid decoding.
@@ -133,6 +185,7 @@ Each EIP is four pieces, each type in its own file named after the type:
 2. **Processor** in `src/Caravan.Core/Processors/`. If it owns producers, threads or timers, derive from
    `ServiceSupport` and the route will start/stop it (`RouteContext.AddService` happens automatically for the
    node processor; call it yourself for extra objects). Implement `INavigableProcessor` when it wraps others.
+   EIPs that send to endpoints computed per exchange use a `ProducerCache`; EIPs that fan out derive from `MulticastProcessor`.
 3. **DSL** in `src/Caravan.Core/Builder/` – generic extension methods on `T : RouteSteps` that return `T`.
    Nested blocks take `Action<RouteSteps>` lambdas, e.g.
    `.Choice(c => c.When(p, r => r.To("mock:a")).Otherwise(r => r.To("mock:b")))`.
@@ -213,6 +266,7 @@ Other conventions:
 
 - `net10.0`, nullable enabled.
 - File-scoped namespaces: `Caravan` (main API), `Caravan.Spi`, `Caravan.Model`, `Caravan.Builder`,
-  `Caravan.Processors`, `Caravan.Support`, `Caravan.Impl`, `Caravan.Components.<Name>`.
+  `Caravan.Processors`, `Caravan.Support`, `Caravan.Impl`, `Caravan.Aggregation` (built-in aggregation strategies),
+  `Caravan.Components.<Name>`.
 - Tests: xUnit, one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
   expectation or `TimeProvider` can be used instead; keep the suite fast.

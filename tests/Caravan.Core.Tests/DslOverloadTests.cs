@@ -85,4 +85,31 @@ public class DslOverloadTests : ContextTestBase
         Assert.Equal(3, routes.OnExceptions.Count);
         Assert.Single(routes.OnCompletions);
     }
+
+    [Fact]
+    public void Split_multicast_and_recipient_list_lambda_shapes_bind_to_a_single_overload()
+    {
+        var route = RouteBuilder.Create(b => b.From("direct:start")
+            .Split(Expr.Body(), s => s.To("mock:a"))
+            .Split(e => e.Message.Body, _ => { })
+            .Split(_ => throw new InvalidOperationException(), _ => { })
+            .Split((Exchange e) => e.Message.Body, _ => { })
+            .Split((string s) => s.Split(','), s => s.Stop(), parallelProcessing: true, streaming: true)
+            .Split((Order o) => new[] { o.Id }, s => s.Log("x"), aggregationStrategy: AggregationStrategies.GroupedBody(), stopOnException: true)
+            .Split(Expr.Tokenize(","), _ => { }, delimiter: ",", timeout: TimeSpan.FromSeconds(1), onPrepare: _ => { }, shareUnitOfWork: true)
+            .Split(Expr.Lines(group: 10, skipFirst: true), _ => { }, aggregationStrategyRef: "s", maxDegreeOfParallelism: 4, parallelAggregate: true)
+            .Multicast(m => m.To("mock:a").To("mock:b"))
+            .Multicast(_ => { }, parallelProcessing: true, aggregationStrategy: AggregationStrategies.From((old, @new) => old ?? @new))
+            .Multicast(_ => { }, aggregationStrategy: AggregationStrategies.From((_, _) => throw new InvalidOperationException()))
+            .Multicast(_ => { }, aggregationStrategy: AggregationStrategies.Body((int sum, int n) => sum + n), onPrepare: e => e.Message.Body = null)
+            .Multicast(_ => { }, aggregationStrategy: AggregationStrategies.Body((string? all, string s) => all + s))
+            .RecipientList(Expr.Header("to"))
+            .RecipientList("mock:a,mock:${header.b}", ignoreInvalidEndpoints: true)
+            .RecipientList(e => e.Message.GetHeader("to"), delimiter: ";", cacheSize: 10)
+            .RecipientList(_ => throw new InvalidOperationException(), parallelProcessing: true)
+            .RecipientList(_ => new[] { "mock:a" }))
+            .Build(Context).Single();
+
+        Assert.Equal(18, route.Outputs.Count);
+    }
 }

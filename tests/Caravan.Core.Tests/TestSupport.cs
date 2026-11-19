@@ -29,4 +29,15 @@ public abstract class ContextTestBase : IAsyncLifetime
     }
 
     protected MockEndpoint Mock(string name) => Context.GetMockEndpoint(name);
+
+    /// <summary>
+    /// Expects no message on the mock, checked right away instead of after the default 500 ms assert period: for routes whose
+    /// sends complete before the template call returns (e.g. <c>direct</c>).
+    /// </summary>
+    protected MockEndpoint ExpectNone(string name)
+    {
+        var mock = Mock(name);
+        mock.AssertPeriod = TimeSpan.FromTicks(1);
+        return mock.ExpectedMessageCount(0);
+    }
 }

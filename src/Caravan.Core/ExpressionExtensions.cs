@@ -23,6 +23,22 @@ public static class ExpressionExtensions
     public static IExpression RegexReplaceAll(this IExpression expression, string regex, object? replacement) =>
         Expr.RegexReplaceAll(expression, regex, replacement);
 
+    /// <summary>Tokenizes the value of this expression (Camel's <c>body().tokenize(",")</c>); see <see cref="Expr.Tokenize(string, bool, int, bool)"/>.</summary>
+    /// <param name="expression">The text to tokenize.</param>
+    /// <param name="token">The separator.</param>
+    /// <param name="regex">Whether <paramref name="token"/> is a regular expression.</param>
+    /// <param name="group">When above 1, joins that many parts into one value.</param>
+    /// <param name="skipFirst">Skips the first part.</param>
+    public static IExpression Tokenize(this IExpression expression, string token, bool regex = false, int group = 0, bool skipFirst = false) =>
+        Expr.Tokenize(expression, token, regex, group, skipFirst);
+
+    /// <summary>The lines of the value of this expression; see <see cref="Expr.Lines(int, bool)"/>.</summary>
+    /// <param name="expression">The text to split in lines.</param>
+    /// <param name="group">When above 1, joins that many lines into one value.</param>
+    /// <param name="skipFirst">Skips the first line.</param>
+    public static IExpression TokenizeLines(this IExpression expression, int group = 0, bool skipFirst = false) =>
+        Expr.Lines(expression, group, skipFirst);
+
     private sealed class ExpressionPredicate(IExpression expression) : IPredicate
     {
         public bool Matches(Exchange exchange) => PredicateHelper.ToBoolean(exchange, expression.Evaluate(exchange));
