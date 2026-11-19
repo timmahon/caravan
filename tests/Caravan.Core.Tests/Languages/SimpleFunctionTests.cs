@@ -167,7 +167,12 @@ public class SimpleFunctionTests : SimpleTestBase
         AssertExpression("${null}", null);
         Assert.True(Guid.TryParse((string)Eval("${uuid}")!, out _));
         Assert.NotEqual(Eval("${uuid}"), Eval("${uuid}"));
-        Assert.Matches("^[0-9a-f]{32}$", (string)Eval("${uuid:simple}")!);
+        var first = long.Parse((string)Eval("${uuid:simple}")!, System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Equal(first + 1, long.Parse((string)Eval("${uuid:simple}")!, System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Matches("^[0-9a-f]{32}$", (string)Eval("${uuid:default}")!);
+        Assert.Matches("^[0-9a-f]{16}$", (string)Eval("${uuid:short}")!);
+        Assert.Matches("^ID-.+-[0-9]+-0-[0-9]+$", (string)Eval("${uuid:classic}")!);
+        Assert.Matches("^[0-9a-f]{8}-[0-9a-f]{4}-", (string)Eval("${uuid:random}")!);
         AssertExpression("${empty(string)}", string.Empty);
         Assert.IsType<List<object?>>(Eval("${empty(list)}"));
         Assert.IsType<Dictionary<string, object?>>(Eval("${empty(map)}"));

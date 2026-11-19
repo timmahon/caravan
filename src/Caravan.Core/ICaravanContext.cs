@@ -38,6 +38,32 @@ public interface ICaravanContext : IService, IAsyncDisposable
     /// <summary>Cancelled when the context is shutting down.</summary>
     CancellationToken ShutdownToken { get; }
 
+    /// <summary>
+    /// Generates the ids of exchanges, messages and sagas and the Simple <c>${uuid}</c> function (default
+    /// <see cref="Impl.DefaultUuidGenerator"/>). Set it before exchanges are created.
+    /// </summary>
+    IUuidGenerator UuidGenerator { get; set; }
+
+    /// <summary>
+    /// Whether routes start when the context starts (default true; Camel's context <c>autoStartup</c>). When false no route starts with the
+    /// context, whatever its own <see cref="RouteDefinition.AutoStartup"/>; start them with <see cref="StartRouteAsync"/>. Routes added
+    /// to a running context follow their own option.
+    /// </summary>
+    bool AutoStartup { get; set; }
+
+    /// <summary>
+    /// Comma-separated patterns (exact, wildcard or regular expression, see <see cref="Support.PatternHelper"/>) of the routes to add,
+    /// matched against the route id and the <c>from</c> endpoint URI (Camel's <c>routeFilterIncludePattern</c>); other routes are ignored when
+    /// added. Null (default) includes every route. Useful to run a subset of the routes in a test.
+    /// </summary>
+    string? RouteFilterIncludePattern { get; set; }
+
+    /// <summary>
+    /// Comma-separated patterns of the routes not to add (Camel's <c>routeFilterExcludePattern</c>); takes precedence over
+    /// <see cref="RouteFilterIncludePattern"/>.
+    /// </summary>
+    string? RouteFilterExcludePattern { get; set; }
+
     /// <summary>Strategies that wrap every processor node in every route (tracing, metrics, ...).</summary>
     IList<IInterceptStrategy> InterceptStrategies { get; }
 
@@ -122,6 +148,58 @@ public interface ICaravanContext : IService, IAsyncDisposable
 
     /// <summary>The definitions of all routes added to the context.</summary>
     IReadOnlyList<RouteDefinition> RouteDefinitions { get; }
+
+    /// <summary>The route templates added to the context (they are not routes: instantiate them with <see cref="AddRouteFromTemplateAsync(string?, string, IDictionary{string, object?}, CancellationToken)"/>).</summary>
+    IReadOnlyList<RouteTemplateDefinition> RouteTemplateDefinitions { get; }
+
+    /// <summary>Adds (or replaces, by id) a route template.</summary>
+    /// <param name="template">The template.</param>
+    void AddRouteTemplateDefinition(RouteTemplateDefinition template);
+
+    /// <summary>Removes a route template; routes created from it are kept.</summary>
+    /// <param name="templateId">The template id.</param>
+    /// <returns>Whether the template existed.</returns>
+    bool RemoveRouteTemplateDefinition(string templateId);
+
+    /// <summary>
+    /// Creates a route from the template <paramref name="templateId"/> with the given parameters (Camel's <c>addRouteFromTemplate</c>); the
+    /// route is created and started right away when the context is running, else when it starts.
+    /// </summary>
+    /// <param name="routeId">The route id; null uses the id the template's route sets, else a generated one.</param>
+    /// <param name="templateId">The template id.</param>
+    /// <param name="parameters">The template parameters; they take precedence over the context's properties in <c>{{placeholders}}</c>.</param>
+    /// <param name="cancellationToken">Cancels the start of the route.</param>
+    /// <returns>The id of the route.</returns>
+    /// <exception cref="FailedToCreateRouteFromTemplateException">The template does not exist, a required parameter is missing, a bean
+    /// cannot be created or the route cannot be added.</exception>
+    Task<string> AddRouteFromTemplateAsync(string? routeId, string templateId, IDictionary<string, object?> parameters, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Creates a route from the template <paramref name="templateId"/> with the parameters and local beans of <paramref name="templateContext"/>.
+    /// </summary>
+    /// <param name="routeId">The route id; null uses the id the template's route sets, else a generated one.</param>
+    /// <param name="templateId">The template id.</param>
+    /// <param name="templateContext">The parameters and local beans.</param>
+    /// <param name="cancellationToken">Cancels the start of the route.</param>
+    /// <returns>The id of the route.</returns>
+    /// <exception cref="FailedToCreateRouteFromTemplateException">The route cannot be created.</exception>
+    Task<string> AddRouteFromTemplateAsync(string? routeId, string templateId, RouteTemplateContext templateContext, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Sources of templated routes created when the context starts (Camel's <c>RouteTemplateParameterSource</c>); <see cref="IRouteTemplateParameterSource"/>
+    /// beans in the registry are used too.
+    /// </summary>
+    IList<IRouteTemplateParameterSource> RouteTemplateParameterSources { get; }
+
+    /// <summary>The route configurations added to the context (see <see cref="RouteConfigurationDefinition"/>).</summary>
+    IReadOnlyList<RouteConfigurationDefinition> RouteConfigurationDefinitions { get; }
+
+    /// <summary>
+    /// Adds a route configuration. It applies to the routes created afterwards: those that select it by id
+    /// (<see cref="RouteDefinition.RouteConfigurationIds"/>) or, when it has no id, those that select none.
+    /// </summary>
+    /// <param name="configuration">The route configuration.</param>
+    void AddRouteConfiguration(RouteConfigurationDefinition configuration);
 
     /// <summary>The runtime routes (created when the context starts).</summary>
     IReadOnlyList<IRoute> Routes { get; }

@@ -11,7 +11,7 @@ public sealed class Message
     public Message(Exchange exchange)
     {
         Exchange = exchange;
-        MessageId = Guid.NewGuid().ToString("N");
+        MessageId = exchange.Context.UuidGenerator.GenerateUuid();
     }
 
     /// <summary>The exchange this message belongs to.</summary>

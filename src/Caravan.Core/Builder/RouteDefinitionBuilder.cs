@@ -87,6 +87,19 @@ public sealed class RouteDefinitionBuilder : RouteSteps
         return this;
     }
 
+    /// <summary>
+    /// Selects the route configurations the route uses (Camel's <c>routeConfigurationId</c>): a comma-separated list of ids or patterns
+    /// (<c>cfg*</c>, regular expressions), applied in that order. Without it the route uses the configurations without id.
+    /// </summary>
+    /// <param name="ids">The ids or patterns.</param>
+    /// <returns>This builder.</returns>
+    public RouteDefinitionBuilder RouteConfigurationId(string ids)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(ids);
+        Definition.RouteConfigurationIds = ids;
+        return this;
+    }
+
     /// <summary>Sets the route's error handler (overrides the route builder's and the context's).</summary>
     public RouteDefinitionBuilder ErrorHandler(ErrorHandlerDefinition errorHandler)
     {

@@ -76,6 +76,27 @@ public sealed class RouteDefinition
     /// </summary>
     public List<InterceptSendToEndpointDefinition> InterceptSendToEndpoints { get; } = [];
 
+    /// <summary>
+    /// The ids of the route configurations the route uses (Camel's <c>routeConfigurationId</c>): a comma-separated list of ids or patterns
+    /// (wildcard <c>cfg*</c> or regular expression), applied in that order. Null (default) applies the configurations without id.
+    /// </summary>
+    public string? RouteConfigurationIds { get; set; }
+
+    /// <summary>The id of the template the route was created from, or null.</summary>
+    public string? TemplateId { get; set; }
+
+    /// <summary>The parameters the route was created from its template with (null for routes not created from a template).</summary>
+    public IReadOnlyDictionary<string, object?>? TemplateParameters { get; set; }
+
+    /// <summary>
+    /// The route's local beans (template beans), looked up before the context's registry while the route is created and while it processes
+    /// exchanges; null when the route has none.
+    /// </summary>
+    public Impl.LocalBeanRegistry? LocalBeans { get; set; }
+
+    /// <summary>Whether the route was created by the <c>kamelet</c> component (such routes are never filtered out).</summary>
+    internal bool IsKamelet { get; set; }
+
     /// <summary>Feature-specific configuration attached to the route (error handler, route policies, ...).</summary>
     public Dictionary<Type, object> Extensions { get; } = [];
 
@@ -93,6 +114,14 @@ public sealed class RouteDefinition
             }
         }
     }
+
+    /// <summary>
+    /// Creates a deep copy of the route: its nodes (nested blocks included), <c>onException</c>/<c>onCompletion</c>/intercept definitions,
+    /// error handler and option objects are copied, so changing the copy (e.g. with AdviceWith) leaves this route unchanged. Expressions,
+    /// predicates, delegates, bean instances and other runtime objects are shared. <see cref="LocalBeans"/> is shared too.
+    /// </summary>
+    /// <returns>The copy.</returns>
+    public RouteDefinition Clone() => Support.DefinitionCloner.Clone(this, null);
 
     /// <inheritdoc />
     public override string ToString() => $"Route({Id ?? "?"})[{FromUri} -> {string.Join(", ", Outputs)}]";

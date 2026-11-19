@@ -6,6 +6,7 @@ using Caravan.Components.ControlBus;
 using Caravan.Components.DataFormat;
 using Caravan.Components.DataSet;
 using Caravan.Components.Direct;
+using Caravan.Components.Kamelet;
 using Caravan.Components.Log;
 using Caravan.Components.Mock;
 using Caravan.Components.Ref;
@@ -49,6 +50,8 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     private readonly ConcurrentDictionary<string, int> _nodeIdCounters = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<Type, object> _extensions = new();
     private readonly List<RouteDefinition> _routeDefinitions = [];
+    private readonly List<RouteTemplateDefinition> _routeTemplates = [];
+    private readonly CopyOnWriteList<RouteConfigurationDefinition> _routeConfigurations = new();
     private readonly List<Route> _routes = [];
     private readonly List<object> _services = [];
     private readonly object _routesLock = new();
@@ -74,6 +77,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         RegisterGlobalComponent("dataset", () => new DataSetComponent());
         RegisterGlobalComponent("dataset-test", () => new DataSetTestComponent());
         RegisterGlobalComponent("browse", () => new BrowseComponent());
+        RegisterGlobalComponent("kamelet", () => new KameletComponent());
     }
 
     /// <summary>Creates a context.</summary>
@@ -89,6 +93,10 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         if (services?.GetService(typeof(IConfiguration)) is IConfiguration configuration)
         {
             PropertiesComponent.AddConfiguration(configuration);
+            if (configuration.GetSection(ConfigurationRouteTemplateParameterSource.DefaultSection) is { } templatedRoutes && templatedRoutes.Exists())
+            {
+                RouteTemplateParameterSources.Add(new ConfigurationRouteTemplateParameterSource(templatedRoutes));
+            }
         }
     }
 
@@ -125,6 +133,22 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
     /// <inheritdoc />
     public CancellationToken ShutdownToken => _shutdown.Token;
+
+    /// <inheritdoc />
+    public IUuidGenerator UuidGenerator
+    {
+        get;
+        set => field = value ?? throw new ArgumentNullException(nameof(value));
+    } = DefaultUuidGenerator.Instance;
+
+    /// <inheritdoc />
+    public bool AutoStartup { get; set; } = true;
+
+    /// <inheritdoc />
+    public string? RouteFilterIncludePattern { get; set; }
+
+    /// <inheritdoc />
+    public string? RouteFilterExcludePattern { get; set; }
 
     /// <inheritdoc />
     public IList<IInterceptStrategy> InterceptStrategies { get; } = new List<IInterceptStrategy>();
@@ -313,6 +337,11 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     }
 
     /// <inheritdoc />
+    /// <remarks>
+    /// The builder's route configurations and templates are added to the context first, then its routes and the routes it declares from
+    /// templates (<see cref="RouteBuilder.TemplatedRoute"/>). Routes not matching <see cref="RouteFilterIncludePattern"/> /
+    /// <see cref="RouteFilterExcludePattern"/> are ignored.
+    /// </remarks>
     public void AddRoutes(IRoutesBuilder builder)
     {
         if (IsRunAllowed)
@@ -321,39 +350,24 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             return;
         }
 
-        var definitions = builder.Build(this);
-        lock (_routesLock)
-        {
-            foreach (var definition in definitions)
-            {
-                ResolvePlaceholders(definition);
-                AssignRouteId(definition);
-                _routeDefinitions.Add(definition);
-            }
-        }
+        AddDefinitions(BuildDefinitions(builder));
     }
 
     /// <inheritdoc />
-    public async Task AddRoutesAsync(IRoutesBuilder builder, CancellationToken cancellationToken = default)
-    {
-        var definitions = builder.Build(this);
-        var created = new List<Route>();
-        lock (_routesLock)
-        {
-            foreach (var definition in definitions)
-            {
-                ResolvePlaceholders(definition);
-                AssignRouteId(definition);
-                _routeDefinitions.Add(definition);
-            }
-        }
+    public Task AddRoutesAsync(IRoutesBuilder builder, CancellationToken cancellationToken = default) =>
+        AddRouteDefinitionsAsync(BuildDefinitions(builder), cancellationToken);
 
+    /// <summary>Adds route definitions, creating and starting them when the context is running.</summary>
+    internal async Task AddRouteDefinitionsAsync(IReadOnlyList<RouteDefinition> definitions, CancellationToken cancellationToken)
+    {
+        var added = AddDefinitions(definitions);
         if (!IsRunAllowed)
         {
             return;
         }
 
-        foreach (var definition in definitions)
+        var created = new List<Route>();
+        foreach (var definition in added)
         {
             created.Add(CreateRoute(definition));
         }
@@ -363,6 +377,215 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             if (route.Definition.AutoStartup)
             {
                 await StartRouteInternalAsync(route, cancellationToken).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private List<RouteDefinition> BuildDefinitions(IRoutesBuilder builder)
+    {
+        var definitions = builder.Build(this).ToList();
+        if (builder is RouteBuilder routeBuilder)
+        {
+            foreach (var configuration in routeBuilder.RouteConfigurationDefinitions)
+            {
+                AddRouteConfiguration(configuration);
+            }
+
+            foreach (var template in routeBuilder.RouteTemplateDefinitions)
+            {
+                AddRouteTemplateDefinition(template);
+            }
+
+            foreach (var templated in routeBuilder.TemplatedRouteDefinitions)
+            {
+                definitions.Add(CreateRouteDefinitionFromTemplate(templated.RouteId, templated.TemplateId, templated.CreateTemplateContext(this)));
+            }
+        }
+
+        return definitions;
+    }
+
+    /// <summary>Resolves placeholders, filters, assigns ids and stores the definitions; returns those added.</summary>
+    private List<RouteDefinition> AddDefinitions(IEnumerable<RouteDefinition> definitions)
+    {
+        var added = new List<RouteDefinition>();
+        lock (_routesLock)
+        {
+            foreach (var definition in definitions)
+            {
+                ResolvePlaceholders(definition);
+                if (!IsIncluded(definition))
+                {
+                    CreateLogger(typeof(CaravanContext).FullName!).LogDebug("Route {RouteId} from {Uri} is filtered out", definition.Id, definition.FromUri);
+                    continue;
+                }
+
+                AssignRouteId(definition);
+                _routeDefinitions.Add(definition);
+                added.Add(definition);
+            }
+        }
+
+        return added;
+    }
+
+    /// <summary>Whether a route passes <see cref="RouteFilterIncludePattern"/> and <see cref="RouteFilterExcludePattern"/> (by id or endpoint URI).</summary>
+    private bool IsIncluded(RouteDefinition definition)
+    {
+        if (definition.IsKamelet || (RouteFilterIncludePattern is null && RouteFilterExcludePattern is null))
+        {
+            return true;
+        }
+
+        if (RouteFilterExcludePattern is { } exclude && Matches(exclude))
+        {
+            return false;
+        }
+
+        return RouteFilterIncludePattern is not { } include || Matches(include);
+
+        bool Matches(string patterns) =>
+            patterns.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).Any(pattern =>
+                (definition.Id is { } id && PatternHelper.Matches(id, pattern)) || EndpointHelper.MatchEndpoint(this, definition.FromUri, pattern));
+    }
+
+    // ----- Route templates and configurations -----
+
+    /// <inheritdoc />
+    public IReadOnlyList<RouteTemplateDefinition> RouteTemplateDefinitions
+    {
+        get
+        {
+            lock (_routesLock)
+            {
+                return [.. _routeTemplates];
+            }
+        }
+    }
+
+    /// <inheritdoc />
+    public void AddRouteTemplateDefinition(RouteTemplateDefinition template)
+    {
+        ArgumentNullException.ThrowIfNull(template);
+        lock (_routesLock)
+        {
+            _routeTemplates.RemoveAll(t => t.Id == template.Id);
+            _routeTemplates.Add(template);
+        }
+    }
+
+    /// <inheritdoc />
+    public bool RemoveRouteTemplateDefinition(string templateId)
+    {
+        lock (_routesLock)
+        {
+            return _routeTemplates.RemoveAll(t => t.Id == templateId) > 0;
+        }
+    }
+
+    /// <inheritdoc />
+    public Task<string> AddRouteFromTemplateAsync(
+        string? routeId,
+        string templateId,
+        IDictionary<string, object?> parameters,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(parameters);
+        var templateContext = new RouteTemplateContext(this);
+        foreach (var (name, value) in parameters)
+        {
+            templateContext.SetParameter(name, value);
+        }
+
+        return AddRouteFromTemplateAsync(routeId, templateId, templateContext, cancellationToken);
+    }
+
+    /// <inheritdoc />
+    public async Task<string> AddRouteFromTemplateAsync(
+        string? routeId,
+        string templateId,
+        RouteTemplateContext templateContext,
+        CancellationToken cancellationToken = default)
+    {
+        var definition = CreateRouteDefinitionFromTemplate(routeId, templateId, templateContext);
+        try
+        {
+            await AddRouteDefinitionsAsync([definition], cancellationToken).ConfigureAwait(false);
+        }
+        catch (FailedToCreateRouteException e)
+        {
+            throw new FailedToCreateRouteFromTemplateException(definition.Id, templateId, e.Message, e);
+        }
+
+        return definition.Id!;
+    }
+
+    /// <inheritdoc />
+    public IList<IRouteTemplateParameterSource> RouteTemplateParameterSources { get; } = new CopyOnWriteList<IRouteTemplateParameterSource>();
+
+    /// <inheritdoc />
+    public IReadOnlyList<RouteConfigurationDefinition> RouteConfigurationDefinitions => [.. _routeConfigurations];
+
+    /// <inheritdoc />
+    public void AddRouteConfiguration(RouteConfigurationDefinition configuration)
+    {
+        ArgumentNullException.ThrowIfNull(configuration);
+        if (!_routeConfigurations.Contains(configuration))
+        {
+            _routeConfigurations.Add(configuration);
+        }
+    }
+
+    /// <summary>Creates (without adding it) the definition of a route from a template.</summary>
+    private RouteDefinition CreateRouteDefinitionFromTemplate(string? routeId, string templateId, RouteTemplateContext templateContext)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(templateId);
+        ArgumentNullException.ThrowIfNull(templateContext);
+        var template = RouteTemplateDefinitions.FirstOrDefault(t => t.Id == templateId)
+            ?? throw new FailedToCreateRouteFromTemplateException(routeId, templateId, "No route template exists with id " + templateId);
+        return RouteTemplateInstantiator.Create(this, template, routeId, templateContext);
+    }
+
+    /// <summary>Adds the routes of the <see cref="IRouteTemplateParameterSource"/>s whose ids do not exist yet.</summary>
+    private void AddRoutesFromParameterSources()
+    {
+        var sources = RouteTemplateParameterSources
+            .Concat(Registry.FindByType<IRouteTemplateParameterSource>().Values)
+            .Distinct(ReferenceEqualityComparer.Instance)
+            .Cast<IRouteTemplateParameterSource>()
+            .ToList();
+        foreach (var source in sources)
+        {
+            foreach (var routeId in source.RouteIds())
+            {
+                lock (_routesLock)
+                {
+                    if (_routeDefinitions.Any(d => d.Id == routeId))
+                    {
+                        continue;
+                    }
+                }
+
+                var templateContext = new RouteTemplateContext(this);
+                string? templateId = null;
+                foreach (var (name, value) in source.Parameters(routeId))
+                {
+                    if (string.Equals(name, IRouteTemplateParameterSource.TemplateIdParameter, StringComparison.OrdinalIgnoreCase))
+                    {
+                        templateId = value?.ToString();
+                    }
+                    else
+                    {
+                        templateContext.SetParameter(name, value);
+                    }
+                }
+
+                if (string.IsNullOrWhiteSpace(templateId))
+                {
+                    throw new FailedToCreateRouteFromTemplateException(routeId, "?", $"The parameter source gives no {IRouteTemplateParameterSource.TemplateIdParameter} for the route");
+                }
+
+                AddDefinitions([CreateRouteDefinitionFromTemplate(routeId, templateId, templateContext)]);
             }
         }
     }
@@ -447,6 +670,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
     internal async Task StartRouteInternalAsync(Route route, CancellationToken cancellationToken)
     {
+        LocalBeanRegistry.Current = route.Definition.LocalBeans;
         try
         {
             await route.StartAsync(cancellationToken).ConfigureAwait(false);
@@ -490,9 +714,10 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         string? Resolve(string? text) => text is null ? null : ResolvePropertyPlaceholders(text);
     }
 
-    private void AssignRouteId(RouteDefinition definition)
+    /// <summary>Generates a route id (<c>route1</c>, ...) that no route uses.</summary>
+    internal string GenerateRouteId()
     {
-        if (definition.Id is null)
+        lock (_routesLock)
         {
             string id;
             do
@@ -501,7 +726,15 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             }
             while (_routeDefinitions.Any(d => d.Id == id));
 
-            definition.Id = id;
+            return id;
+        }
+    }
+
+    private void AssignRouteId(RouteDefinition definition)
+    {
+        if (definition.Id is null)
+        {
+            definition.Id = GenerateRouteId();
         }
         else if (_routeDefinitions.Any(d => d.Id == definition.Id))
         {
@@ -512,14 +745,16 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     private Route CreateRoute(RouteDefinition definition)
     {
         var routeId = definition.Id!;
+        using var localBeans = LocalBeanRegistry.Enter(definition.LocalBeans);
         try
         {
-            SimpleRouteValidator.Validate(definition);
             var routeContext = new RouteContext(this, definition, routeId);
-            var errorHandler = definition.ErrorHandler ?? ErrorHandler ?? new DefaultErrorHandlerDefinition();
+            routeContext.ApplyRouteConfigurations(RouteConfigurationDefinitions);
+            SimpleRouteValidator.Validate(routeContext);
+            var errorHandler = routeContext.ErrorHandler ?? ErrorHandler ?? new DefaultErrorHandlerDefinition();
             if (errorHandler.RequiresOriginalMessage ||
-                definition.OnExceptions.Any(o => o.UseOriginalMessage || o.UseOriginalBody) ||
-                definition.OnCompletions.Any(o => o.UseOriginalMessage))
+                routeContext.OnExceptions.Any(o => o.UseOriginalMessage || o.UseOriginalBody) ||
+                routeContext.OnCompletions.Any(o => o.UseOriginalMessage))
             {
                 AllowUseOriginalMessage = true;
             }
@@ -531,8 +766,8 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             }
 
             var endpoint = GetEndpoint(definition.FromUri);
-            RegisterInterceptSendToEndpoints(definition);
-            var intercepts = definition.Intercepts
+            RegisterInterceptSendToEndpoints(routeContext);
+            var intercepts = routeContext.Intercepts
                 .Where(i => !i.Disabled)
                 .Select(i => new InterceptNodeStrategy(i, InterceptFromProcessor.BuildBlock(routeContext, i), endpoint.EndpointUri))
                 .ToList();
@@ -559,10 +794,10 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         }
     }
 
-    private void RegisterInterceptSendToEndpoints(RouteDefinition definition)
+    private void RegisterInterceptSendToEndpoints(RouteContext routeContext)
     {
         var interceptors = SendToEndpointInterceptors.For(this);
-        foreach (var intercept in definition.InterceptSendToEndpoints.Where(i => !i.Disabled))
+        foreach (var intercept in routeContext.InterceptSendToEndpoints.Where(i => !i.Disabled))
         {
             var interceptor = interceptors.GetOrAdd(
                 existing => ReferenceEquals(existing.Definition, intercept),
@@ -605,6 +840,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             await endpoint.StartAsync(cancellationToken).ConfigureAwait(false);
         }
 
+        AddRoutesFromParameterSources();
         List<RouteDefinition> definitions;
         lock (_routesLock)
         {
@@ -617,7 +853,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         }
 
         var toStart = OrderForStartup(Routes.Cast<Route>())
-            .Where(r => r.Definition.AutoStartup && r.Status != ServiceStatus.Started)
+            .Where(r => AutoStartup && r.Definition.AutoStartup && r.Status != ServiceStatus.Started)
             .ToList();
         if (SupervisingRouteController is { } supervisor)
         {

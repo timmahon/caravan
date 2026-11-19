@@ -188,16 +188,26 @@ internal static class SimpleFunctions
         return null;
     }
 
+    private static DelegateNode GeneratorNode(Spi.IUuidGenerator generator, string f) => new(_ => generator.GenerateUuid(), f);
+
     private static SimpleNode? CreateMiscFunction(string f, int index, string expression)
     {
         switch (f)
         {
             case "null":
                 return new LiteralNode(null);
-            case "uuid" or "uuid:default" or "uuid:classic" or "uuid:random":
-                return new DelegateNode(_ => Guid.NewGuid().ToString(), f);
+            case "uuid":
+                return new DelegateNode(e => e.Context.UuidGenerator.GenerateUuid(), f);
+            case "uuid:default":
+                return new DelegateNode(_ => Impl.DefaultUuidGenerator.Instance.GenerateUuid(), f);
+            case "uuid:random":
+                return new DelegateNode(_ => Guid.NewGuid().ToString("D"), f);
+            case "uuid:classic":
+                return GeneratorNode(new Impl.ClassicUuidGenerator(), f);
+            case "uuid:short":
+                return GeneratorNode(new Impl.ShortUuidGenerator(), f);
             case "uuid:simple":
-                return new DelegateNode(_ => Guid.NewGuid().ToString("N"), f);
+                return GeneratorNode(new Impl.SimpleUuidGenerator(), f);
             case "threadName":
                 return new DelegateNode(_ => Thread.CurrentThread.Name ?? $"thread-{Environment.CurrentManagedThreadId}", f);
             case "threadId":
@@ -208,7 +218,7 @@ internal static class SimpleFunctions
 
         if (f.StartsWith("uuid:", StringComparison.Ordinal))
         {
-            throw new SimpleParseException($"Unknown uuid generator: {f[5..]} (supported: default, classic, random, simple)", expression, index);
+            throw new SimpleParseException($"Unknown uuid generator: {f[5..]} (supported: default, classic, random, short, simple)", expression, index);
         }
 
         if (After(f, "properties:") is { } property)

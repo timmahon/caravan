@@ -29,6 +29,14 @@ internal sealed class RouteProcessor(Route route, IProcessor pipeline) : INaviga
             EventHelper.Notify(context, CaravanEventType.ExchangeCreated, exchange, route.Endpoint, route.Id);
         }
 
+        // The route's local beans (route templates) are visible to registry lookups on this flow; other routes see none.
+        var previousLocalBeans = LocalBeanRegistry.Current;
+        var localBeans = route.Definition.LocalBeans;
+        if (!ReferenceEquals(previousLocalBeans, localBeans))
+        {
+            LocalBeanRegistry.Current = localBeans;
+        }
+
         var previousRouteId = exchange.CurrentRouteId;
         exchange.CurrentRouteId = route.Id;
         var inflight = context.InflightRepository;
@@ -45,6 +53,11 @@ internal sealed class RouteProcessor(Route route, IProcessor pipeline) : INaviga
         finally
         {
             exchange.CurrentRouteId = previousRouteId;
+            if (!ReferenceEquals(previousLocalBeans, localBeans))
+            {
+                LocalBeanRegistry.Current = previousLocalBeans;
+            }
+
             if (unitOfWork is null)
             {
                 // markRollbackOnlyLast only rolls back the current route: the calling route continues.

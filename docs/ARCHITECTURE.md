@@ -59,6 +59,12 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `IDataFormat` / `DataFormatRegistry` / `ICaravanContext.ResolveDataFormat` | `marshal`/`unmarshal` and the `dataformat` component (see "Data formats") | `DataFormat` / `CamelContext.resolveDataFormat` |
 | `StreamCachingStrategy` / `IStreamCache` | Re-readable stream bodies (see "Stream caching") | `StreamCachingStrategy` / `StreamCache` |
 | `BeanProcessor` / `BeanExpression` | The `bean` EIP, `bean`/`class` components, `bean`/`method` language (see "Bean binding") | `BeanProcessor` / `BeanExpression` |
+| `RouteTemplateDefinition` / `RouteTemplateContext` / `TemplatedRouteBuilder` | Route templates and the routes created from them (see "Route templates") | `RouteTemplateDefinition` / `RouteTemplateContext` / `TemplatedRouteBuilder` |
+| `LocalBeanRegistry` | Beans local to one route (template beans), consulted before the context registry | local bean repository |
+| `IRouteTemplateParameterSource` / `ConfigurationRouteTemplateParameterSource` | Routes created from templates at startup, e.g. from `IConfiguration` | `RouteTemplateParameterSource` |
+| `KameletComponent` | `kamelet:` calls a template as a reusable route snippet | `kamelet` component |
+| `RouteConfigurationDefinition` / `RouteConfigurationBuilder` | Shared error handling and interceptors selected by routes (see "Route configuration") | `RouteConfigurationDefinition` / `RouteConfigurationBuilder` |
+| `IUuidGenerator` | Exchange, message and saga ids (see "Global configuration") | `UuidGenerator` |
 
 ### Error semantics
 
@@ -358,8 +364,8 @@ that); `MaxRetryAttempts` counts retries after the first call.
 
 Camel's three interceptors, defined on a `RouteBuilder` (`b.Intercept(...)`, `b.InterceptFrom(...)`, `b.InterceptSendToEndpoint(...)`) and
 applied to that builder's routes. `RouteBuilder.Build` copies them into `RouteDefinition.Intercepts`, `InterceptFroms` and
-`InterceptSendToEndpoints` (as with builder-level `onException`); the lists are public so that route configurations (row 12) and
-`AdviceWith` can add to them. Blocks are `RouteSteps` builders (`InterceptBuilder`, `InterceptSendToEndpointBuilder`) with `When(predicate)`;
+`InterceptSendToEndpoints` (as with builder-level `onException`); the lists are public so that `AdviceWith` can add to them; route
+configurations add theirs when the route is created (`RouteContext.Intercepts` etc., see "Route configuration"). Blocks are `RouteSteps` builders (`InterceptBuilder`, `InterceptSendToEndpointBuilder`) with `When(predicate)`;
 `Stop()` in a block stops the exchange.
 
 - **intercept** runs before every node of the route, nested nodes included (choice branches, split parts, multicast branches), but not the
@@ -466,7 +472,7 @@ resolved text is compiled and cached), so they work in `log`, `toD`, `setBody(si
   `exchangeProperty.name` / `[name]`, `exchangePropertyAs(name,Type)`, `exchangeId`, `id`/`messageId`, `routeId`, `fromRouteId`,
   `camelId`/`contextName`, `stepId`, `exchange`, `exception` (the exception, or `CaravanExceptionCaught`), `exception.message`,
   `exception.stacktrace`, `date:command[:pattern]`, `date-with-timezone:command:zone:pattern`, `properties:key[:default]`,
-  `propertiesExist:[!]key`, `random(max)`/`random(min,max)`, `uuid` (`uuid:default|classic|random|simple`), `null`,
+  `propertiesExist:[!]key`, `random(max)`/`random(min,max)`, `uuid` (the context's `UuidGenerator`; `uuid:default|classic|random|short|simple`), `null`,
   `empty(string|list|map|set)`, `env:NAME`/`env.NAME`/`sysenv.NAME`, `sys.name`, `collate(n)`, `skip(n)`, `join(separator,prefix,source)`,
   `type:Full.Type.Name.Member` (public static field, constant or property), `ref:bean`, `threadId`, `threadName`, `hostname`.
   Type names accept C# keywords, Java names (`String`, `Integer`, `java.lang.Long`, `BigDecimal`, `List`, `Map`), full names and unique
@@ -514,6 +520,9 @@ then `app:queue`) → `InitialProperties` → environment variables if `Fallback
 (in .NET environment variables usually arrive through `IConfiguration`'s provider; Camel defaults to override). A context created with an
 `IServiceProvider` that has an `IConfiguration` uses it as a source. API: `ResolveProperty(key)` (null when missing), `Resolve(key)`,
 `ResolvePlaceholders(text)`, `ParseUri(uri)`; `context.ResolvePropertyPlaceholders(text)` is `ParseUri`.
+
+Route templates substitute their parameters into a copy of the template's route before any of this (see "Route templates"), so a
+parameter works wherever a placeholder does and wins over a property of the same name.
 
 Where placeholders are resolved: endpoint URIs (every `GetEndpoint`: `from`, `to`, dynamic URIs, endpoint options), Simple expressions and
 predicates (so `log` messages and every dynamic string option), route ids, groups and descriptions and node ids/descriptions (when routes are
@@ -613,6 +622,103 @@ defaults instead of being matched by type; method names fall back to a case-inse
   expected bodies from `uri` when it starts (polling until `timeout`, 2 s), optionally `split`, and expects them (`anyOrder`).
 - **browse** (`browse:name?browseLimit=n`): records a copy of each exchange (`Exchanges`), then hands it to its consumer like `direct`.
 
+### Route templates
+
+Camel's route templates (and the base of Kamelets). `RouteBuilder.RouteTemplate("greet")` returns a `RouteTemplateBuilder`:
+`.TemplateParameter(name, defaultValue?, description?, required = true)` (a default makes it optional), `.TemplateOptionalParameter(name)`,
+`.TemplateBean(name, rtc => new X(...) | typeof(X))`, `.Configure(rtc => ...)`, then `.From(uri)` and the steps. Templates live in the
+context (`RouteTemplateDefinitions`, `AddRouteTemplateDefinition` — same id replaces —, `RemoveRouteTemplateDefinition`), never start, and
+get the error handler, `onException`, `onCompletion` and interceptors of their route builder like its routes.
+
+- **Creating routes.** `context.AddRouteFromTemplateAsync(routeId, templateId, parameters | RouteTemplateContext)`,
+  `TemplatedRouteBuilder.Builder(context, id).RouteId(..).Parameter(..).Bean(name, obj | factory).Configure(rtc => ..).Handler(route => ..).AddAsync()`,
+  or declaratively `RouteBuilder.TemplatedRoute(id, r => r.RouteId(..).Parameter(..))` (the template may come from the same builder — a
+  builder's configurations and templates are added before its routes — or from one added earlier, e.g. a library). A route created before the
+  context starts is created at start; on a running context it is created and started at once. The steps: defaults are added for parameters
+  without value, the template's then the caller's configurer run, missing required parameters (null counts as missing) fail with
+  `FailedToCreateRouteFromTemplateException` ("... the following mandatory parameters must be provided: a, b"; unknown parameters are
+  ignored, as Camel); the route id is the given one, else the template route's id (after substitution), else generated; the beans are
+  created; then the template's route is **deep-copied** with the parameters substituted, and `Handler` may change the copy. The route records
+  `TemplateId`, `TemplateParameters` and `LocalBeans`.
+- **Substitution** (`TemplateParameterSubstitution`). Every string of the copy (URIs, ids, descriptions, options, properties, route
+  configuration ids) and the text of every Simple expression/predicate (`Expr.Simple`, `Pred.Simple`, `Lang.Simple`, recompiled when changed)
+  gets `{{p}}`, `{{p:default}}` and `{{?p}}` replaced when `p` is a parameter (case-insensitive) with the value's invariant text; nested keys
+  work (`{{app.{{env}}.url}}`). Other placeholders are left to the properties component as usual, so template parameters take precedence
+  over context properties (Camel's local properties) and an optional parameter without value falls back to them (`{{?p}}` in a URI then drops
+  the option). Expressions other than Simple (lambdas, constants) are shared, not rewritten.
+- **Deep copy** (`DefinitionCloner`, also public as `RouteDefinition.Clone()` / `ProcessorDefinition.Clone()`). Reflection over instance
+  fields: `ProcessorDefinition`s, `RouteDefinition`s and the other `Caravan.Model` classes (error handlers, redelivery policies, resequencer
+  configurations, ...) are copied, each once (sharing inside the graph is kept); `List<>`, `Dictionary<,>`, `HashSet<>` and arrays are copied
+  with copied elements; `Parent`/`Route` are remapped to the copies (cleared when outside the graph); expressions, predicates, delegates,
+  types, strategies and beans are shared. New EIP definitions need no copy code as long as they keep their state in fields of those kinds.
+  So every route owns its nodes: `AdviceWith`, `Handler` or code changing one route never affects the template or the other routes, and node
+  ids (made unique with placeholders such as `.Id("send-{{name}}")` when needed) are per route.
+- **Local beans** (`LocalBeanRegistry`, Camel's local bean repository). Template beans (created per route, with the `RouteTemplateContext`
+  to read parameters: `rtc.GetProperty<int>("start")`) and beans given per route are bound in the route's `LocalBeans`. The context's
+  `DefaultRegistry` looks names up there first while the route is created (`CaravanContext.CreateRoute`, route start) and while it processes
+  an exchange (`RouteProcessor` sets `LocalBeanRegistry.Current`, an `AsyncLocal` that follows the route's asynchronous calls and is reset
+  when the exchange enters a route without local beans, e.g. a `direct` call). So `.Bean("myBean")`, `ProcessRef`, `...Ref` options and
+  `#myBean` see the route's instance. Each bean is also bound under a name unique to the route, `{name}-{routeId}`, and the parameter `name`
+  is set to it (unless given): since endpoints and compiled Simple texts are cached context-wide by text, a template refers to a local bean
+  in a URI or Simple text through its placeholder — `bean:{{myBean}}`, `?x=#{{myBean}}`, `${bean:{{myBean}}?method=..}` — so each route gets
+  its own endpoint/expression. Lookups from threads that are not on the route's flow (e.g. an aggregator's timeout sender) do not see them.
+- **Parameter sources** (`IRouteTemplateParameterSource`: `RouteIds()`, `Parameters(routeId)` including `templateId`). When the context
+  starts, the sources in `context.RouteTemplateParameterSources` and the registry create their routes, skipping ids that exist (restart).
+  `ConfigurationRouteTemplateParameterSource` reads an `IConfiguration` section with one child per route (key or `routeId` = route id,
+  `templateId`, parameters under `parameters` or as the other values); a context created with a service provider whose configuration has
+  `caravan:templatedRoutes` uses it automatically (Camel main's `camel.route-template`).
+- **Kamelets** (`kamelet` component, producer side). A template consuming from `kamelet:source` is called with
+  `to("kamelet:templateId[/routeId]?param=v")`: the endpoint (one per distinct URI, i.e. per parameter set) creates the route once, on the
+  first send (`routeId` option/path, else `{templateId}-{n}`; parameters missing from the URI come from the properties
+  `caravan.kamelet.{templateId}.{param}`, then the defaults), its `from` becoming `kamelet:source?routeId=<id>`; the exchange is then
+  processed by that route synchronously, like `direct`, and returns to the caller when it ends. `kamelet:sink` marks the end and does
+  nothing. Kamelet routes are never removed by route filters. Templates can be packaged in a library's `RouteBuilder` and used from any
+  context that adds it.
+
+Differences from Camel: substitution happens once, in the copy, rather than through local properties at reification (same result for strings
+and Simple, but lambdas cannot see parameters — use `rtc` in a bean factory or configurer); local beans also get a unique name (Camel binds
+them under their name only, which a context-wide endpoint cache would share between routes); `TemplateBean` takes factories or types, not
+scripts; no `prefixId`; consuming from a Kamelet (`from("kamelet:x")`) and Kamelet YAML specs are not supported.
+
+### Route configuration
+
+Camel 3.12+'s `routeConfiguration`: error handler, `onException`, `onCompletion`, `intercept`, `interceptFrom` and `interceptSendToEndpoint`
+shared by many routes. Defined with `RouteBuilder.RouteConfiguration([id,] c => c.ErrorHandler(..).OnException<T>(..).OnCompletion(..)
+.Intercept(..).InterceptFrom([pattern,] ..).InterceptSendToEndpoint(..))`, usually in a `RouteConfigurationBuilder` subclass
+(`Configuration()` instead of `Configure()`), or added with `context.AddRouteConfiguration(definition)`. Configurations are kept in the context
+(`RouteConfigurationDefinitions`) and resolved when a route is *created* (`RouteContext.ApplyRouteConfigurations`, before the error handler
+is chosen), so they may be added before or after the routes, as long as it is before the routes are created; the route definition itself is
+not changed (so AdviceWith and restarts see the same definition).
+
+- **Selection.** `.RouteConfigurationId("a, b*")` (`RouteDefinition.RouteConfigurationIds`): for each id or pattern in order, the
+  configurations whose id matches (exact, wildcard, regular expression); an exact id matching nothing fails route creation (a typo would
+  otherwise silently drop error handling). A route without ids uses the configurations without id (or with id `*`): the defaults.
+- **Precedence** (`RouteContext.ErrorHandler`, `OnExceptions`, `OnCompletions`, `Intercepts`, `InterceptFroms`, `InterceptSendToEndpoints`,
+  used by `CaravanContext.CreateRoute`, the error handler, `InterceptFromProcessor` and `OnCompletionProcessor`):
+  - error handler: the route's own → its route builder's → the first selected configuration having one → `context.ErrorHandler` → default;
+  - `onException`: the route's own (route scoped, always tried first), then its builder's, then the configurations' in selection order
+    (global scope; among global clauses an exact type match wins, else the closest type, ties to the first);
+  - `onCompletion`: the route's own, else its builder's, else those of all selected configurations;
+  - intercepts of all three kinds: the route's (builder, advice) followed by the configurations'.
+
+Differences from Camel: unknown exact ids fail route creation; there is no `precondition`.
+
+### Global configuration
+
+Context-wide defaults (Camel's `CamelContext`/main options), all on `ICaravanContext`; route options override them where both exist:
+
+| Option | Default | Notes |
+|---|---|---|
+| `ErrorHandler` | null (= default error handler) | Overridden by route, builder and route configuration (see above). |
+| `StreamCaching.Enabled` | true | `.StreamCaching(bool)` on a route overrides. |
+| `AllowUseOriginalMessage` | false | Turned on automatically by `useOriginalMessage`. |
+| `ShutdownStrategy.Timeout` | 45 s | Graceful shutdown. |
+| `AutoStartup` | true | When false no route starts with the context (whatever its own `autoStartup`, as Camel); routes added to a running context follow their own option. |
+| `RouteFilterIncludePattern` / `RouteFilterExcludePattern` | null | Comma-separated patterns (exact, wildcard, regex) matched against the route id and the `from` URI (`EndpointHelper.MatchEndpoint`) when routes are added; exclude wins; filtered routes are dropped (debug log). Handy to run a subset of routes in a test. |
+| `UuidGenerator` | `DefaultUuidGenerator` | `IUuidGenerator.GenerateUuid()` makes exchange ids (also correlated copies), message ids, in-memory saga ids and `${uuid}`. Built-ins (`Caravan.Impl`): `DefaultUuidGenerator` (Guid, 32 hex), `RandomUuidGenerator` (Guid with dashes), `ShortUuidGenerator` (16 hex: random prefix + counter), `SimpleUuidGenerator` (1, 2, 3...; predictable ids for tests), `ClassicUuidGenerator` (`ID-host-millis-0-n`). Simple's `${uuid:default|random|short|simple|classic}` pick one explicitly. |
+
+Message history and tracing come with observability (row 13).
+
 ### Endpoint URIs
 
 - `scheme:path?k=v&k2=v2` (also `scheme://path`). Values may use `RAW(...)` to avoid decoding.
@@ -634,6 +740,8 @@ Optional features hook into the core without changing it:
 - `RouteContextConfigurers` (context extension) – callbacks run for each route before its processors
   are built, after the route's configured error handler factory is set (e.g. to replace `RouteContext.ErrorHandlerFactory`).
 - `RouteBuilderHooks` (context extension) – post-process route definitions after `Configure()`.
+- `RouteContext.RouteConfigurations` and the effective `OnExceptions`/`OnCompletions`/`Intercepts`/... – what a route uses once route
+  configurations are applied; features building route-level processors read these rather than the `RouteDefinition` lists.
 - `RouteDefinition.Extensions` – feature-specific per-route configuration keyed by type.
 - `ICaravanContext.InterceptStrategies` / `RouteContext.InterceptStrategies` – wrap nodes.
 - `SendToEndpointInterceptors.For(context)` – intercept every send to matching endpoints (`ISendToEndpointInterceptor`). Code that sends
@@ -683,7 +791,7 @@ Register built-in components in the `CaravanContext` static constructor. Backgro
 "Consumers: lifecycle, suspension and shutdown" above.
 
 Built-in components: `direct`, `seda` (and `vm`, its process-wide variant), `timer`, `scheduler`, `log`, `mock`, `saga`, `dataformat`, `bean`,
-`class`, `controlbus`, `stub`, `ref`, `dataset`, `dataset-test`, `browse`.
+`class`, `controlbus`, `stub`, `ref`, `dataset`, `dataset-test`, `browse`, `kamelet`.
 
 ### Consumers: lifecycle, suspension and shutdown
 

@@ -49,7 +49,7 @@ public sealed class InMemorySagaService : ServiceSupport, ISagaService
     /// <inheritdoc />
     public Task<ISagaCoordinator> NewSagaAsync(Exchange exchange)
     {
-        var saga = new InMemorySagaCoordinator(this, Guid.NewGuid().ToString("N"));
+        var saga = new InMemorySagaCoordinator(this, Context.UuidGenerator.GenerateUuid());
         _sagas[saga.Id] = saga;
         return Task.FromResult<ISagaCoordinator>(saga);
     }

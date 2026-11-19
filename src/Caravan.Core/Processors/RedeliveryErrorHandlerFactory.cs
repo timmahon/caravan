@@ -32,7 +32,7 @@ internal sealed class RedeliveryErrorHandlerFactory : IErrorHandlerFactory
         }
 
         RedeliveryEnabled = RedeliveryPolicy.MaximumRedeliveries != 0 || definition.RetryWhile is not null ||
-            routeContext.Definition.OnExceptions.Any(o => o.RedeliveryPolicy.EnablesRedelivery || o.RetryWhile is not null);
+            routeContext.OnExceptions.Any(o => o.RedeliveryPolicy.EnablesRedelivery || o.RetryWhile is not null);
         LoggerName = definition.LoggerName ?? "Caravan.Processors." + definition.Name;
     }
 
@@ -91,7 +91,7 @@ internal sealed class RedeliveryErrorHandlerFactory : IErrorHandlerFactory
         // Built on first use, when the route's configurers have run, so the blocks get the same intercept strategies as the route.
         _building = true;
         var policies = new List<ExceptionPolicy>();
-        foreach (var onException in _routeContext.Definition.OnExceptions)
+        foreach (var onException in _routeContext.OnExceptions)
         {
             onException.Id ??= _routeContext.Context.NextNodeId(onException.ShortName);
             var policy = onException.RedeliveryPolicy.CreatePolicy(RedeliveryPolicy);

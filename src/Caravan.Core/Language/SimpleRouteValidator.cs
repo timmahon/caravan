@@ -12,15 +12,15 @@ internal static class SimpleRouteValidator
 {
     private static readonly ConcurrentDictionary<Type, PropertyInfo[]> PredicateProperties = new();
 
-    /// <summary>Validates the nodes of <paramref name="route"/> (steps, onException, onCompletion and intercept blocks).</summary>
-    public static void Validate(RouteDefinition route)
+    /// <summary>Validates the nodes of the route of <paramref name="routeContext"/> (steps, onException, onCompletion and intercept blocks).</summary>
+    public static void Validate(Spi.RouteContext routeContext)
     {
-        var roots = route.Outputs
-            .Concat(route.OnExceptions)
-            .Concat(route.OnCompletions)
-            .Concat(route.Intercepts)
-            .Concat(route.InterceptFroms)
-            .Concat(route.InterceptSendToEndpoints);
+        var roots = routeContext.Definition.Outputs
+            .Concat<ProcessorDefinition>(routeContext.OnExceptions)
+            .Concat(routeContext.OnCompletions)
+            .Concat(routeContext.Intercepts)
+            .Concat(routeContext.InterceptFroms)
+            .Concat(routeContext.InterceptSendToEndpoints);
         var stack = new Stack<ProcessorDefinition>(roots);
         var seen = new HashSet<ProcessorDefinition>(ReferenceEqualityComparer.Instance);
         while (stack.Count > 0)

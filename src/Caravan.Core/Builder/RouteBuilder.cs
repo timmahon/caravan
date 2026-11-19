@@ -26,6 +26,9 @@ public abstract class RouteBuilder : IRoutesBuilder
     private readonly List<InterceptDefinition> _intercepts = [];
     private readonly List<InterceptFromDefinition> _interceptFroms = [];
     private readonly List<InterceptSendToEndpointDefinition> _interceptSendToEndpoints = [];
+    private readonly List<RouteTemplateDefinition> _templates = [];
+    private readonly List<TemplatedRouteDefinition> _templatedRoutes = [];
+    private readonly List<RouteConfigurationDefinition> _routeConfigurations = [];
     private ErrorHandlerDefinition? _errorHandler;
     private ICaravanContext? _context;
 
@@ -42,6 +45,67 @@ public abstract class RouteBuilder : IRoutesBuilder
         var route = new RouteDefinition(uri);
         _routes.Add(route);
         return new RouteDefinitionBuilder(route);
+    }
+
+    /// <summary>The route templates defined by the last <see cref="Build"/>.</summary>
+    public IReadOnlyList<RouteTemplateDefinition> RouteTemplateDefinitions => _templates;
+
+    /// <summary>The templated routes declared by the last <see cref="Build"/>.</summary>
+    public IReadOnlyList<TemplatedRouteDefinition> TemplatedRouteDefinitions => _templatedRoutes;
+
+    /// <summary>The route configurations defined by the last <see cref="Build"/>.</summary>
+    public IReadOnlyList<RouteConfigurationDefinition> RouteConfigurationDefinitions => _routeConfigurations;
+
+    /// <summary>
+    /// Defines a route template (Camel's <c>routeTemplate</c>): <c>RouteTemplate("t").TemplateParameter("name").From("timer:{{name}}").To(...)</c>.
+    /// Templates are added to the context with the builder's routes but are not routes: create routes from them with
+    /// <see cref="TemplatedRoute"/>, <see cref="TemplatedRouteBuilder"/>, <see cref="ICaravanContext.AddRouteFromTemplateAsync(string?, string, IDictionary{string, object?}, CancellationToken)"/>
+    /// or the <c>kamelet</c> component. The builder's error handler, <c>onException</c>, <c>onCompletion</c> and interceptors apply to them.
+    /// </summary>
+    /// <param name="id">The template id.</param>
+    /// <returns>The template builder.</returns>
+    public RouteTemplateBuilder RouteTemplate(string id)
+    {
+        var template = new RouteTemplateDefinition(id);
+        _templates.Add(template);
+        return new RouteTemplateBuilder(template);
+    }
+
+    /// <summary>
+    /// Declares a route created from the template <paramref name="templateId"/> when this builder is added to a context (Camel's
+    /// <c>templatedRoute</c>): <c>TemplatedRoute("t", r =&gt; r.RouteId("a").Parameter("name", "a"))</c>. The template may come from this
+    /// builder or from one added earlier.
+    /// </summary>
+    /// <param name="templateId">The template id.</param>
+    /// <param name="configure">Sets the route id, parameters and beans.</param>
+    /// <returns>The definition.</returns>
+    public TemplatedRouteDefinition TemplatedRoute(string templateId, Action<TemplatedRouteDefinitionBuilder>? configure = null)
+    {
+        var definition = new TemplatedRouteDefinition(templateId);
+        configure?.Invoke(new TemplatedRouteDefinitionBuilder(definition));
+        _templatedRoutes.Add(definition);
+        return definition;
+    }
+
+    /// <summary>Defines a default route configuration (no id: applied to every route that selects no configuration).</summary>
+    /// <param name="configure">Configures it.</param>
+    /// <returns>The definition.</returns>
+    public RouteConfigurationDefinition RouteConfiguration(Action<RouteConfigurationDefinitionBuilder> configure) => RouteConfiguration(null, configure);
+
+    /// <summary>
+    /// Defines a route configuration (Camel's <c>routeConfiguration</c>), added to the context with this builder; routes select it with
+    /// <see cref="RouteDefinitionBuilder.RouteConfigurationId"/> (a null <paramref name="id"/> applies it to every route selecting none).
+    /// </summary>
+    /// <param name="id">The id, or null.</param>
+    /// <param name="configure">Configures it.</param>
+    /// <returns>The definition.</returns>
+    public RouteConfigurationDefinition RouteConfiguration(string? id, Action<RouteConfigurationDefinitionBuilder> configure)
+    {
+        ArgumentNullException.ThrowIfNull(configure);
+        var definition = new RouteConfigurationDefinition { Id = id };
+        configure(new RouteConfigurationDefinitionBuilder(definition));
+        _routeConfigurations.Add(definition);
+        return definition;
     }
 
     /// <summary>Sets the error handler of this builder's routes (a route's own error handler takes precedence).</summary>
@@ -168,6 +232,9 @@ public abstract class RouteBuilder : IRoutesBuilder
             _intercepts.Clear();
             _interceptFroms.Clear();
             _interceptSendToEndpoints.Clear();
+            _templates.Clear();
+            _templatedRoutes.Clear();
+            _routeConfigurations.Clear();
             _errorHandler = null;
             Configure();
             ApplyBuilderConfiguration();
@@ -186,7 +253,7 @@ public abstract class RouteBuilder : IRoutesBuilder
 
     private void ApplyBuilderConfiguration()
     {
-        foreach (var route in _routes)
+        foreach (var route in _routes.Concat(_templates.Select(t => t.Route).OfType<RouteDefinition>()))
         {
             route.ErrorHandler ??= _errorHandler;
             route.OnExceptions.AddRange(_onExceptions.Where(o => !route.OnExceptions.Contains(o)));

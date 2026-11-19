@@ -5,7 +5,8 @@ namespace Caravan.Impl;
 
 /// <summary>
 /// In-memory registry. When an <see cref="IServiceProvider"/> is supplied, typed lookups fall back to it,
-/// so beans registered in dependency injection are visible to routes.
+/// so beans registered in dependency injection are visible to routes. The local beans of the route being created or processing the
+/// current exchange (<see cref="LocalBeanRegistry.Current"/>) are looked up first.
 /// </summary>
 public sealed class DefaultRegistry(IServiceProvider? services = null) : IRegistry
 {
@@ -26,7 +27,8 @@ public sealed class DefaultRegistry(IServiceProvider? services = null) : IRegist
     public bool Unbind(string name) => _beans.TryRemove(name, out _);
 
     /// <inheritdoc />
-    public object? Lookup(string name) => _beans.TryGetValue(name, out var bean) ? bean : null;
+    public object? Lookup(string name) =>
+        LocalBeanRegistry.Current?.Lookup(name) ?? (_beans.TryGetValue(name, out var bean) ? bean : null);
 
     /// <inheritdoc />
     public T? Lookup<T>(string name)
@@ -37,6 +39,11 @@ public sealed class DefaultRegistry(IServiceProvider? services = null) : IRegist
         where T : class
     {
         var result = _beans.Where(kv => kv.Value is T).ToDictionary(kv => kv.Key, kv => (T)kv.Value);
+        foreach (var (name, bean) in LocalBeanRegistry.Current?.FindByType<T>() ?? new Dictionary<string, T>())
+        {
+            result[name] = bean;
+        }
+
         if (result.Count == 0 && Services?.GetService(typeof(IEnumerable<T>)) is IEnumerable<T> fromServices)
         {
             var i = 0;
@@ -53,6 +60,11 @@ public sealed class DefaultRegistry(IServiceProvider? services = null) : IRegist
     public T? FindSingleByType<T>()
         where T : class
     {
+        if (LocalBeanRegistry.Current?.FindSingleByType<T>() is { } local)
+        {
+            return local;
+        }
+
         var matches = _beans.Values.OfType<T>().Take(2).ToList();
         if (matches.Count == 1)
         {

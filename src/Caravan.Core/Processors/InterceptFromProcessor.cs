@@ -38,7 +38,7 @@ public sealed class InterceptFromProcessor : INavigableProcessor
     public static IProcessor Wrap(RouteContext routeContext, IEndpoint endpoint, IProcessor pipeline)
     {
         var blocks = new List<(IPredicate?, IProcessor)>();
-        foreach (var definition in routeContext.Definition.InterceptFroms.Where(d => !d.Disabled && Matches(routeContext, endpoint, d)))
+        foreach (var definition in routeContext.InterceptFroms.Where(d => !d.Disabled && Matches(routeContext, endpoint, d)))
         {
             blocks.Add((definition.When, BuildBlock(routeContext, definition)));
         }

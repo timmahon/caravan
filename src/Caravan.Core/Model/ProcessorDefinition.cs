@@ -35,6 +35,13 @@ public abstract class ProcessorDefinition
     /// <summary>A short human-readable label, e.g. <c>to[mock:result]</c>.</summary>
     public virtual string Label => ShortName;
 
+    /// <summary>
+    /// Creates a deep copy of the node and its nested blocks (see <see cref="RouteDefinition.Clone"/>); the copy has no
+    /// <see cref="Parent"/> and no <see cref="Route"/>.
+    /// </summary>
+    /// <returns>The copy.</returns>
+    public ProcessorDefinition Clone() => Support.DefinitionCloner.Clone(this, null);
+
     /// <inheritdoc />
     public override string ToString() => Id is null ? Label : $"{Label} (id={Id})";
 }
