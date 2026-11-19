@@ -3,7 +3,7 @@ using Caravan.Spi;
 namespace Caravan.Support;
 
 /// <summary>Base class for endpoints. Public settable properties are bound from URI parameters.</summary>
-public abstract class EndpointBase : ServiceSupport, IEndpoint
+public abstract class EndpointBase : ServiceSupport, IPollingConsumerEndpoint
 {
     /// <summary>Creates an endpoint.</summary>
     protected EndpointBase(string endpointUri, IComponent? component, ICaravanContext context)
@@ -39,6 +39,9 @@ public abstract class EndpointBase : ServiceSupport, IEndpoint
 
     /// <inheritdoc />
     public abstract IConsumer CreateConsumer(IProcessor processor);
+
+    /// <summary>Creates a polling consumer; by default an <see cref="EventDrivenPollingConsumer"/> over <see cref="CreateConsumer"/>.</summary>
+    public virtual IPollingConsumer CreatePollingConsumer() => new EventDrivenPollingConsumer(this);
 
     /// <summary>Creates an exchange from this endpoint, with <c>InOnly</c> unless <paramref name="pattern"/> is given.</summary>
     public virtual Exchange CreateExchange(ExchangePattern? pattern = null) =>

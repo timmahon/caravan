@@ -47,4 +47,16 @@ public enum CaravanEventType
 
     /// <summary>An error handler handled a failed exchange.</summary>
     ExchangeFailureHandled,
+
+    /// <summary>A route was suspended: its consumer no longer takes new messages.</summary>
+    RouteSuspended,
+
+    /// <summary>A suspended route was resumed.</summary>
+    RouteResumed,
+
+    /// <summary>The supervising route controller is about to retry starting a route.</summary>
+    RouteRestarting,
+
+    /// <summary>A retry of the supervising route controller failed to start the route (see <see cref="CaravanEvent.Cause"/>).</summary>
+    RouteRestartingFailure,
 }

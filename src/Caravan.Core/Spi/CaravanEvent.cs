@@ -14,4 +14,10 @@ public sealed record CaravanEvent(CaravanEventType Type, ICaravanContext Context
 
     /// <summary>For <see cref="CaravanEventType.ExchangeSent"/>: how long sending took.</summary>
     public TimeSpan? Duration { get; init; }
+
+    /// <summary>For failure events (such as <see cref="CaravanEventType.RouteRestartingFailure"/>): the cause.</summary>
+    public Exception? Cause { get; init; }
+
+    /// <summary>For <see cref="CaravanEventType.RouteRestarting"/> and <see cref="CaravanEventType.RouteRestartingFailure"/>: the attempt number.</summary>
+    public int? Attempt { get; init; }
 }

@@ -32,12 +32,20 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `IRegistry` | Named/typed beans, optionally backed by `IServiceProvider` | `Registry` |
 | `TypeConverterRegistry` | Type conversions; add custom ones with `AddConverter` | `TypeConverter` |
 | `IProducerTemplate` | Send/request from application code | `ProducerTemplate` |
+| `IConsumerTemplate` | Receive (poll) from application code; `DoneUoWAsync` completes a received exchange | `ConsumerTemplate` |
+| `IPollingConsumer` / `IPollingConsumerEndpoint` | Pull-model consumers; `PollingConsumerFactory.Create` polls any endpoint | `PollingConsumer` |
+| `IInflightRepository` | Exchanges being routed, per route, with durations (fed by `RouteProcessor`) | `InflightRepository` |
+| `IShutdownStrategy` / `IShutdownAware` | Graceful stop/suspend of routes; consumers that queue or loop take part | `ShutdownStrategy` / `ShutdownAware` |
+| `SupervisingRouteController` | Retries routes that fail to start, with backoff | `SupervisingRouteController` |
 
 ### Error semantics
 
 - Processors **may throw**. `Channel` catches the exception and sets `exchange.Exception`.
 - `Pipeline` stops when `exchange.IsFailed`, `exchange.IsRouteStop` or `exchange.IsRollbackOnly`.
 - `RouteProcessor` creates the unit of work only if the exchange has none (so `direct` calls between routes share one).
+  Callbacks added with `Exchange.AddOnCompletion` before a unit of work exists are taken over by it. When an exchange is
+  handed to another task (e.g. `seda`), its synchronizations are handed over to the copy unless
+  `ISynchronization.AllowHandover` is false.
 - `IProducerTemplate.Send*Body*` / `Request*` throw `CaravanExecutionException` when the exchange failed;
   `SendAsync(uri, exchange)` returns the exchange with `Exception` set instead.
 
@@ -101,11 +109,41 @@ the `log` EIP) go through `Support.TokenTemplate`, an interim stand-in to be rep
 Derive from `ComponentBase` (override `CreateEndpoint(uri, remaining, parameters)`), `EndpointBase`
 (public settable properties = URI options), `ProducerBase` and/or `ConsumerBase`. Consumers call
 `Processor.ProcessAsync(exchange)` with exchanges created by `Endpoint.CreateExchange()`.
-Register built-in components in the `CaravanContext` static constructor.
+Register built-in components in the `CaravanContext` static constructor. Background consumers follow the rules in
+"Consumers: lifecycle, suspension and shutdown" above.
+
+Built-in components: `direct`, `seda` (and `vm`, its process-wide variant), `timer`, `scheduler`, `log`, `mock`.
+
+### Consumers: lifecycle, suspension and shutdown
+
+- Routes are controlled through the context: `StartRouteAsync`, `StopRouteAsync`, `SuspendRouteAsync`,
+  `ResumeRouteAsync`, `RemoveRouteAsync`, `GetRouteStatus`. Stop and suspend go through `ICaravanContext.ShutdownStrategy`
+  (default `DefaultShutdownStrategy`, timeout 45s): consumers stop first, deferred ones (`ShutdownRoute.Defer`, or
+  `IShutdownAware.DeferShutdown`) keep running, inflight exchanges are awaited, then deferred consumers stop. On timeout
+  shutdown-aware consumers are forced (`PrepareShutdown(..., forced: true)`) and, on context stop,
+  `ICaravanContext.ShutdownToken` is cancelled. Context stop then stops the routes' services, endpoints and components.
+- A consumer that can pause overrides `ServiceSupport.DoSuspendAsync`/`DoResumeAsync` (the default suspends by stopping).
+  Suspension stops taking new work and waits for the current work (bounded by the forced shutdown).
+- A consumer that queues messages or runs its own loop implements `IShutdownAware`: report queued messages in
+  `PendingExchangesSize` (drained with `ShutdownRunningTask.CompleteAllTasks`) and stop waiting / cancel work when forced.
+  Run background loops on `Task.Run`; `DoStopAsync` cancels them and awaits them unless forced.
+- Exchanges created by background consumers use a token linked to the consumer's forced shutdown and
+  `ShutdownToken`; `RouteProcessor` defaults `exchange.CancellationToken` to `ShutdownToken`.
+- Polling: override `EndpointBase.CreatePollingConsumer` when the component has a natural pull model (seda); otherwise
+  `EventDrivenPollingConsumer` adapts the event-driven consumer. Components that poll a resource on a schedule derive
+  their consumer from `ScheduledPollConsumer` (implement `PollAsync`, return the number of messages processed) and their
+  endpoint from `ScheduledPollEndpoint` (scheduling options as URI options, `ConfigureConsumer`).
+- `SupervisingRouteController` (set `ICaravanContext.SupervisingRouteController` before start) turns route start failures
+  into background retries; failed routes keep status `Failed` and are listed in `FailedRoutes`.
 
 ## Time
 
 Use `context.TimeProvider` for anything time-based (delays, timers, timeouts) so tests can use a fake clock.
+Tests use `TestTimeProvider` (a `FakeTimeProvider` from `Microsoft.Extensions.TimeProvider.Testing` that counts created
+timers): `AdvanceAndWaitForTimerAsync` advances the clock and waits until the woken code has scheduled its next timer,
+so loops driven by `Task.Delay(…, TimeProvider)` are tested without sleeps or missed advances. Code that waits for
+something with a timeout must cancel the wait itself on timeout (a `CancellationTokenSource(timeout, timeProvider)`
+linked to the caller's token) rather than abandon it, so a late result is not taken and lost.
 
 ## Conventions
 

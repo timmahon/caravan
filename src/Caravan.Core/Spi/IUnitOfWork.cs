@@ -21,7 +21,11 @@ public interface IUnitOfWork
     /// <summary>Unregisters a callback.</summary>
     void RemoveSynchronization(ISynchronization synchronization);
 
-    /// <summary>Hands synchronizations over to another exchange (used when an exchange is passed to another thread/route).</summary>
+    /// <summary>
+    /// Hands synchronizations over to another exchange (used when an exchange is passed to another thread/route).
+    /// They are added with <see cref="Exchange.AddOnCompletion"/>, so they run when the target's unit of work completes.
+    /// Synchronizations whose <see cref="ISynchronization.AllowHandover"/> is false stay.
+    /// </summary>
     void HandoverSynchronization(Exchange target, Func<ISynchronization, bool>? filter = null);
 
     /// <summary>Runs the registered callbacks for <paramref name="exchange"/> (on completion or failure).</summary>

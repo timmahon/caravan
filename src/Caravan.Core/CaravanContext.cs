@@ -4,6 +4,9 @@ using Caravan.Builder;
 using Caravan.Components.Direct;
 using Caravan.Components.Log;
 using Caravan.Components.Mock;
+using Caravan.Components.Scheduler;
+using Caravan.Components.Seda;
+using Caravan.Components.Timer;
 using Caravan.Impl;
 using Caravan.Model;
 using Caravan.Processors;
@@ -46,6 +49,10 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         RegisterGlobalComponent("direct", () => new DirectComponent());
         RegisterGlobalComponent("log", () => new LogComponent());
         RegisterGlobalComponent("mock", () => new MockComponent());
+        RegisterGlobalComponent("seda", () => new SedaComponent());
+        RegisterGlobalComponent("vm", () => new VmComponent());
+        RegisterGlobalComponent("timer", () => new TimerComponent());
+        RegisterGlobalComponent("scheduler", () => new SchedulerComponent());
     }
 
     /// <summary>Creates a context.</summary>
@@ -95,6 +102,16 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
     /// <inheritdoc />
     public IList<IPropertiesSource> PropertiesSources { get; } = new List<IPropertiesSource>();
+
+    /// <inheritdoc cref="ICaravanContext.InflightRepository" />
+    /// <remarks>Can be replaced before the context starts.</remarks>
+    public IInflightRepository InflightRepository { get; set; } = new DefaultInflightRepository();
+
+    /// <inheritdoc />
+    public IShutdownStrategy ShutdownStrategy { get; set; } = new DefaultShutdownStrategy();
+
+    /// <inheritdoc />
+    public SupervisingRouteController? SupervisingRouteController { get; set; }
 
     // ----- Components -----
 
@@ -323,10 +340,12 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             }
         }
 
-        if (route.Status is not (ServiceStatus.Stopped or ServiceStatus.Initialized))
+        if (route.Status is not (ServiceStatus.Stopped or ServiceStatus.Initialized or ServiceStatus.Failed))
         {
             return false;
         }
+
+        SupervisingRouteController?.Forget(routeId);
 
         lock (_routesLock)
         {
@@ -338,13 +357,48 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         return true;
     }
 
-    private async Task StartRouteInternalAsync(Route route, CancellationToken cancellationToken)
+    /// <inheritdoc />
+    public async Task SuspendRouteAsync(string routeId, CancellationToken cancellationToken = default)
+    {
+        var route = RequireRoute(routeId);
+        if (route.Status != ServiceStatus.Started)
+        {
+            return;
+        }
+
+        await ShutdownStrategy.SuspendAsync(this, [route], cancellationToken: cancellationToken).ConfigureAwait(false);
+        await route.SuspendAsync(cancellationToken).ConfigureAwait(false);
+        EventHelper.Notify(this, CaravanEventType.RouteSuspended, routeId: route.Id, endpoint: route.Endpoint);
+    }
+
+    /// <inheritdoc />
+    public async Task ResumeRouteAsync(string routeId, CancellationToken cancellationToken = default)
+    {
+        var route = RequireRoute(routeId);
+        if (route.Status == ServiceStatus.Suspended)
+        {
+            await route.ResumeAsync(cancellationToken).ConfigureAwait(false);
+            EventHelper.Notify(this, CaravanEventType.RouteResumed, routeId: route.Id, endpoint: route.Endpoint);
+        }
+        else if (route.Status != ServiceStatus.Started)
+        {
+            await StartRouteInternalAsync(route, cancellationToken).ConfigureAwait(false);
+        }
+    }
+
+    /// <inheritdoc />
+    public ServiceStatus? GetRouteStatus(string routeId) => GetRoute(routeId)?.Status;
+
+    private Route RequireRoute(string routeId) =>
+        (Route?)GetRoute(routeId) ?? throw new ArgumentException($"No route with id: {routeId}", nameof(routeId));
+
+    internal async Task StartRouteInternalAsync(Route route, CancellationToken cancellationToken)
     {
         try
         {
             await route.StartAsync(cancellationToken).ConfigureAwait(false);
         }
-        catch (Exception e) when (e is not CaravanException)
+        catch (Exception e) when (e is not CaravanException and not OperationCanceledException)
         {
             throw new FailedToStartRouteException(route.Id, e.Message, e);
         }
@@ -354,9 +408,18 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
     private async Task StopRouteInternalAsync(Route route, CancellationToken cancellationToken)
     {
+        SupervisingRouteController?.Forget(route.Id);
+        if (route.Status is ServiceStatus.Started or ServiceStatus.Suspended)
+        {
+            await ShutdownStrategy.ShutdownAsync(this, [route], cancellationToken: cancellationToken).ConfigureAwait(false);
+        }
+
         await route.StopAsync(cancellationToken).ConfigureAwait(false);
         EventHelper.Notify(this, CaravanEventType.RouteStopped, routeId: route.Id, endpoint: route.Endpoint);
     }
+
+    /// <summary>Cancels <see cref="ShutdownToken"/> (used by the shutdown strategy to force a context shutdown).</summary>
+    internal Task CancelShutdownTokenAsync() => _shutdown.CancelAsync();
 
     private void AssignRouteId(RouteDefinition definition)
     {
@@ -450,9 +513,16 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             CreateRoute(definition);
         }
 
-        foreach (var route in OrderForStartup(Routes.Cast<Route>()))
+        var toStart = OrderForStartup(Routes.Cast<Route>())
+            .Where(r => r.Definition.AutoStartup && r.Status != ServiceStatus.Started)
+            .ToList();
+        if (SupervisingRouteController is { } supervisor)
         {
-            if (route.Definition.AutoStartup && route.Status != ServiceStatus.Started)
+            await supervisor.StartRoutesAsync(this, toStart, ShutdownToken).ConfigureAwait(false);
+        }
+        else
+        {
+            foreach (var route in toStart)
             {
                 await StartRouteInternalAsync(route, cancellationToken).ConfigureAwait(false);
             }
@@ -461,15 +531,30 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         EventHelper.Notify(this, CaravanEventType.ContextStarted);
     }
 
-    /// <summary>Stops routes in reverse startup order, then endpoints, components and services.</summary>
+    /// <summary>
+    /// Shuts the routes down gracefully with the <see cref="ShutdownStrategy"/> (reverse startup order, deferred routes last),
+    /// stops them, then stops endpoints, components and services.
+    /// </summary>
     protected override async Task DoStopAsync(CancellationToken cancellationToken)
     {
         EventHelper.Notify(this, CaravanEventType.ContextStopping);
 
-        // Stop routes in reverse startup order (consumers first, so inflight exchanges can complete).
-        foreach (var route in OrderForStartup(Routes.Cast<Route>()).Reverse())
+        if (SupervisingRouteController is { } supervisor)
         {
-            await StopRouteInternalAsync(route, cancellationToken).ConfigureAwait(false);
+            await supervisor.StopAsync().ConfigureAwait(false);
+        }
+
+        var reversed = OrderForStartup(Routes.Cast<Route>()).Reverse().ToList();
+        var ordered = reversed.Where(r => r.Definition.ShutdownRoute != ShutdownRoute.Defer)
+            .Concat(reversed.Where(r => r.Definition.ShutdownRoute == ShutdownRoute.Defer))
+            .ToList();
+        var running = ordered.Where(r => r.Status is ServiceStatus.Started or ServiceStatus.Suspended).Cast<IRoute>().ToList();
+        await ShutdownStrategy.ShutdownAsync(this, running, cancellationToken: cancellationToken).ConfigureAwait(false);
+
+        foreach (var route in ordered)
+        {
+            await route.StopAsync(cancellationToken).ConfigureAwait(false);
+            EventHelper.Notify(this, CaravanEventType.RouteStopped, routeId: route.Id, endpoint: route.Endpoint);
         }
 
         await _shutdown.CancelAsync().ConfigureAwait(false);
@@ -528,6 +613,9 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
     /// <inheritdoc />
     public IProducerTemplate CreateProducerTemplate() => new ProducerTemplate(this);
+
+    /// <inheritdoc />
+    public IConsumerTemplate CreateConsumerTemplate() => new ConsumerTemplate(this);
 
     /// <inheritdoc />
     public string NextNodeId(string prefix) =>

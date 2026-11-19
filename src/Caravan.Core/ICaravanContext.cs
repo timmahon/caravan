@@ -99,13 +99,42 @@ public interface ICaravanContext : IService, IAsyncDisposable
     /// <summary>Stops a route; inflight exchanges are allowed to complete.</summary>
     Task StopRouteAsync(string routeId, CancellationToken cancellationToken = default);
 
-    /// <summary>Stops and removes a route; returns false when it does not exist.</summary>
+    /// <summary>Removes a stopped route; returns false when it does not exist or is not stopped.</summary>
     Task<bool> RemoveRouteAsync(string routeId, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Suspends a started route: its consumer stops taking new messages (consumers that cannot be suspended are stopped)
+    /// and inflight exchanges complete, but the route stays registered and can be resumed. Does nothing unless the route is started.
+    /// </summary>
+    /// <exception cref="ArgumentException">There is no such route.</exception>
+    Task SuspendRouteAsync(string routeId, CancellationToken cancellationToken = default);
+
+    /// <summary>Resumes a suspended route (starts it when it is stopped).</summary>
+    /// <exception cref="ArgumentException">There is no such route.</exception>
+    Task ResumeRouteAsync(string routeId, CancellationToken cancellationToken = default);
+
+    /// <summary>The status of a route, or null when there is no such runtime route (e.g. before the context started).</summary>
+    ServiceStatus? GetRouteStatus(string routeId);
+
+    /// <summary>The exchanges currently being routed.</summary>
+    IInflightRepository InflightRepository { get; }
+
+    /// <summary>Stops and suspends routes gracefully; set it (or its <see cref="IShutdownStrategy.Timeout"/>) before stopping the context.</summary>
+    IShutdownStrategy ShutdownStrategy { get; set; }
+
+    /// <summary>
+    /// When set (before the context starts), routes that fail to start are retried in the background instead of failing
+    /// the context startup. Null (default) disables supervision.
+    /// </summary>
+    Impl.SupervisingRouteController? SupervisingRouteController { get; set; }
 
     // Misc
 
     /// <summary>Creates a template for sending messages to endpoints from application code.</summary>
     IProducerTemplate CreateProducerTemplate();
+
+    /// <summary>Creates a template for receiving (polling) messages from endpoints in application code.</summary>
+    IConsumerTemplate CreateConsumerTemplate();
 
     /// <summary>Resolves <c>{{key}}</c> and <c>{{key:default}}</c> placeholders in <paramref name="text"/>.</summary>
     string ResolvePropertyPlaceholders(string text);
