@@ -12,6 +12,9 @@ public static class AggregationStrategies
     /// <param name="propagateException">Whether the exception of a failed exchange is set on the original (default true).</param>
     public static IAggregationStrategy UseOriginal(bool propagateException = true) => new UseOriginalAggregationStrategy(null, propagateException);
 
+    /// <summary>Takes the reply of the resource (the default of <c>enrich</c>/<c>pollEnrich</c>); see <see cref="CopyAggregationStrategy"/>.</summary>
+    public static IAggregationStrategy Copy() => CopyAggregationStrategy.Instance;
+
     /// <summary>Groups the exchanges into a <c>List&lt;Exchange&gt;</c> body; see <see cref="GroupedExchangeAggregationStrategy"/>.</summary>
     public static IAggregationStrategy GroupedExchange() => new GroupedExchangeAggregationStrategy();
 

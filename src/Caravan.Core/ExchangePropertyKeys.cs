@@ -90,4 +90,19 @@ public static class ExchangePropertyKeys
     public const string BatchIndex = "CaravanBatchIndex";
     /// <summary>True on the last exchange of the batch a batch consumer polled.</summary>
     public const string BatchComplete = "CaravanBatchComplete";
+    /// <summary>The URI of the endpoint a <c>routingSlip</c> or <c>dynamicRouter</c> is currently sending to (Camel's <c>CamelSlipEndpoint</c>).</summary>
+    public const string SlipEndpoint = "CaravanSlipEndpoint";
+    /// <summary>
+    /// The number of times (0-based) a <c>dynamicRouter</c> has evaluated its expression for the exchange, set before each evaluation
+    /// (no Camel equivalent: it saves keeping a counter in the expression).
+    /// </summary>
+    public const string DynamicRouterIndex = "CaravanDynamicRouterIndex";
+    /// <summary>The index (0-based) of the current <c>loop</c> iteration.</summary>
+    public const string LoopIndex = "CaravanLoopIndex";
+    /// <summary>The number of iterations of a <c>loop</c> with a count (not set for <c>loopWhile</c>).</summary>
+    public const string LoopSize = "CaravanLoopSize";
+    /// <summary>Set to true by the <c>idempotentConsumer</c> on a duplicate exchange.</summary>
+    public const string DuplicateMessage = "CaravanDuplicateMessage";
+    /// <summary>The <see cref="Spi.IClaimCheckRepository"/> of the exchange, created by the first <c>claimCheck</c>.</summary>
+    public const string ClaimCheckRepository = "CaravanClaimCheckRepository";
 }

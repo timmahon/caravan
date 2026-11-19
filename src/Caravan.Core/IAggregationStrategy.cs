@@ -40,6 +40,15 @@ public interface IAggregationStrategy
     Exchange? Aggregate(Exchange? oldExchange, Exchange newExchange, Exchange inputExchange) => Aggregate(oldExchange, newExchange);
 
     /// <summary>
+    /// Called by <c>pollEnrich</c> instead of <see cref="Aggregate(Exchange?, Exchange)"/> when no message was received within the
+    /// timeout (Camel calls <c>aggregate</c> with a null new exchange then). The default keeps <paramref name="oldExchange"/> unchanged;
+    /// the default strategy of <c>enrich</c>/<c>pollEnrich</c> (<see cref="Aggregation.CopyAggregationStrategy"/>) sets its body to null.
+    /// </summary>
+    /// <param name="oldExchange">The exchange being enriched.</param>
+    /// <returns>The result; null leaves the exchange as it is.</returns>
+    Exchange? AggregateNoMessage(Exchange oldExchange) => oldExchange;
+
+    /// <summary>
     /// Called once with the final result when the aggregation completes (Camel's <c>onCompletion</c>), e.g. to turn
     /// accumulated state into the body. Not called when nothing was aggregated.
     /// </summary>

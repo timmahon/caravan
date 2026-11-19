@@ -43,7 +43,11 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `MulticastProcessor` | Fan-out engine of `multicast`, `split` (`SplitProcessor`) and `recipientList` (`RecipientListProcessor`) | `MulticastProcessor` |
 | `AggregateProcessor` / `IAggregationRepository` | The `aggregate` EIP and the store of its groups (`MemoryAggregationRepository` by default) | `AggregateProcessor` / `AggregationRepository` |
 | `BatchResequencerProcessor` / `StreamResequencerProcessor` | The `resequence` EIP (batch and stream) | `Resequencer` / `StreamResequencer` |
-| `ProducerCache` | LRU cache of started senders per endpoint, for dynamic endpoints (`toD`, `wireTap`, `recipientList`) | `ProducerCache` |
+| `ProducerCache` | LRU cache of started senders per endpoint, for dynamic endpoints (`toD`, `wireTap`, `recipientList`, `routingSlip`, `dynamicRouter`, `enrich`) | `ProducerCache` |
+| `ConsumerCache` | LRU cache of started polling consumers per endpoint (`pollEnrich`) | `ConsumerCache` |
+| `IIdempotentRepository` / `MemoryIdempotentRepository` | Processed message ids of the `idempotentConsumer` EIP | `IdempotentRepository` / `MemoryIdempotentRepository` |
+| `ILoadBalancer` / `Caravan.LoadBalancing` | Chooses the outputs of the `loadBalance` EIP | `LoadBalancer` |
+| `IClaimCheckRepository` / `MemoryClaimCheckRepository` | Per-exchange store of the `claimCheck` EIP | `ClaimCheckRepository` |
 
 ### Error semantics
 
@@ -226,6 +230,58 @@ processors are `IShutdownAware` route services: a graceful stop emits what they 
   `MessageRejectedException`; senders wait while `Capacity` (1000) exchanges are held; `DeliveryAttemptInterval` bounds how long delivery
   sleeps without a signal. Difference from Camel: held exchanges are delivered on stop instead of dropped.
 
+### Routing and flow control
+
+Definitions, processors and DSL follow "Adding an EIP"; the EIPs below keep Camel's semantics except where noted.
+
+- **routingSlip / dynamicRouter** (`RoutingSlipProcessor`, `DynamicRouterProcessor`). The slip (URIs split on `uriDelimiter`, a sequence, or
+  endpoints) is processed as a pipeline on the exchange itself; each send goes through a `ProducerCache` and is wrapped with the route's error
+  handler (a failing step is redelivered on its own); the slip stops when the exchange fails or is stopped. `CaravanSlipEndpoint` holds the current
+  endpoint. The dynamic router evaluates its expression again after every step until it returns null (or nothing); `CaravanDynamicRouterIndex` (no
+  Camel equivalent) numbers the evaluations. As in Camel there is no step limit; a cancelled `Exchange.CancellationToken` ends it with a failure.
+- **enrich / pollEnrich** (`EnrichProcessor`, `PollEnrichProcessor`). `enrich` sends a correlated `InOut` copy to the resource (own unit of work
+  unless `shareUnitOfWork`), `pollEnrich` receives from a `ConsumerCache`d polling consumer (`timeout`: null/negative blocks, zero does not wait,
+  positive waits on the context's clock). A failed reply fails the exchange unless `aggregateOnException`; otherwise the strategy merges it
+  (`Aggregate(original, resource)`) and completion callbacks of the resource are handed over. The default strategy, `CopyAggregationStrategy`, takes
+  the reply (Camel's behaviour). When `pollEnrich` receives nothing, Camel calls `aggregate(original, null)`; Caravan calls the strategy's
+  `IAggregationStrategy.AggregateNoMessage(original)` instead (default: unchanged; `CopyAggregationStrategy`: body set to null, headers kept), so
+  `newExchange` is never null.
+- **loop** (`LoopProcessor`). Count (evaluated once, `CaravanLoopSize`) or while predicate (checked on the previous output); `CaravanLoopIndex`;
+  `copy` starts every iteration from a copy of the input (sharing its unit of work) and keeps the last result. No iteration limit, as Camel; a
+  cancelled token fails the exchange, or ends the loop quietly with `breakOnShutdown` (which also stops at context shutdown).
+- **delay / sample** (`DelayProcessor`, `SamplingProcessor`). Delays and sample periods use `context.TimeProvider`. `asyncDelayed: false` blocks the
+  thread (Camel's synchronous mode); `callerRunsWhenRejected` is accepted but has no effect (no executor). `sample` lets the first exchange of each
+  period (or every Nth) through and stops the others (`IsRouteStop`), as Camel.
+- **throttle** (`ThrottleProcessor`, `ThrottlingMode`). `ConcurrentRequests` (Camel 4, the default): at most N exchanges hold a permit; the permit
+  is an `ISynchronization` (never handed over, e.g. to `seda`) released when the exchange's unit of work is done, so it covers the rest of the
+  route, and waiters are released in FIFO order. `TotalRequests` (Camel 3, chosen by `Mode` or by setting `TimePeriod`): a sliding window of N
+  admissions per period; an exchange waits until enough admissions are one period old. Both: per-key state (`correlationExpression`; idle keys
+  are discarded), the maximum is evaluated per exchange (latest wins; null or non-positive fails), `rejectExecution` fails with
+  `ThrottlerRejectedExecutionException`, waiting honours the exchange's cancellation token. A throttle inside a branch that shares its parent's unit
+  of work holds the permit until the parent completes.
+- **idempotentConsumer** (`IdempotentConsumerProcessor`). Nested block run once per message id. Eager (default) adds the id on arrival
+  (atomically: one of concurrent duplicates passes), non-eager checks on arrival and adds on completion. Completion (with the exchange's unit of
+  work, or right after the block with `completionEager`) confirms the id on success or removes it on failure (`removeOnFailure`). Duplicates get
+  `CaravanDuplicateMessage` and skip the block (or run it with `skipDuplicate: false`).
+- **loadBalance** (`LoadBalanceProcessor`). Each step of the block is an output (wrapped as a route node). Built-ins in `Caravan.LoadBalancing`:
+  round robin, random, weighted (round-robin or random within each cycle of the distribution ratio; the ratio must match the outputs), sticky
+  (correlation value → output, assigned round robin; kept for the processor's lifetime as in Camel), topic (a correlated copy to every output,
+  stopping at the first failure; the exchange is unchanged), failover (each attempt on a fresh copy of the input; `maximumFailoverAttempts` -1
+  unbounded, `roundRobin` wraps around, `sticky` starts at the last good output, exceptions matched along the cause chain; with
+  `inheritErrorHandler` (default) outputs keep the route's error handler, so each is redelivered first and a failure the dead letter channel
+  handled does not fail over), and custom.
+- **claimCheck** (`ClaimCheckProcessor`). Per-exchange `IClaimCheckRepository` in the `CaravanClaimCheckRepository` property (exchange copies share
+  it). `Set`/`Push` store a copy; `Get`/`GetAndRemove`/`Pop` merge a copy back with `ClaimCheckAggregationStrategy` and Camel's filter syntax
+  (`body`, `headers`, `header:pattern`, `+`/`-` prefixes; only exclusions means everything else). Keys may use `${...}` tokens.
+- **validate, script, setExchangePattern, sort, setHeaders**: `PredicateValidationException` when the predicate fails; `script` evaluates for side
+  effects; `sort` turns the items of the body (or an expression) into a sorted `List<object?>` (natural ordering coerces types like Camel).
+
+**SPIs.** `IIdempotentRepository` (`Caravan.Spi`): `AddAsync`/`ContainsAsync`/`RemoveAsync`/`ConfirmAsync`/`ClearAsync`, asynchronous so durable
+stores fit; `AddAsync` must be atomic; repositories that are `IService`s are started and stopped with the processor. `MemoryIdempotentRepository`
+(`Caravan.Idempotent`) keeps the last `MaxCacheSize` (1000) ids added. `ILoadBalancer.ProcessAsync(exchange, processors)`: one instance per node,
+called concurrently; `QueueLoadBalancer` is the base for single-output choices; an `IService` load balancer is started with the route.
+`IClaimCheckRepository` is synchronous (it lives on the exchange); `MemoryClaimCheckRepository` is the default.
+
 ### Endpoint URIs
 
 - `scheme:path?k=v&k2=v2` (also `scheme://path`). Values may use `RAW(...)` to avoid decoding.
@@ -345,6 +401,7 @@ Other conventions:
 - `net10.0`, nullable enabled.
 - File-scoped namespaces: `Caravan` (main API), `Caravan.Spi`, `Caravan.Model`, `Caravan.Builder`,
   `Caravan.Processors`, `Caravan.Support`, `Caravan.Impl`, `Caravan.Aggregation` (built-in aggregation strategies),
+  `Caravan.LoadBalancing` (built-in load balancers), `Caravan.Idempotent` (idempotent repositories),
   `Caravan.Components.<Name>`.
 - Tests: xUnit, one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
   expectation or `TimeProvider` can be used instead; keep the suite fast.
