@@ -9,6 +9,10 @@ namespace Caravan.Builder;
 /// </summary>
 public class RouteSteps
 {
+    /// <summary>Creates a builder adding steps to <paramref name="outputs"/>.</summary>
+    /// <param name="outputs">The list that receives the step definitions.</param>
+    /// <param name="route">The owning route, if any.</param>
+    /// <param name="parent">The definition owning this block, or null for a route's top-level block.</param>
     public RouteSteps(List<ProcessorDefinition> outputs, RouteDefinition? route = null, ProcessorDefinition? parent = null)
     {
         Outputs = outputs;
@@ -45,53 +49,5 @@ public class RouteSteps
     public void BuildNested(List<ProcessorDefinition> outputs, ProcessorDefinition parent, Action<RouteSteps>? configure)
     {
         configure?.Invoke(Nested(outputs, parent));
-    }
-}
-
-/// <summary>Builder for a route: adds route-level options to <see cref="RouteSteps"/>.</summary>
-public sealed class RouteDefinitionBuilder : RouteSteps
-{
-    public RouteDefinitionBuilder(RouteDefinition definition)
-        : base(definition.Outputs, definition)
-    {
-        Definition = definition;
-    }
-
-    public RouteDefinition Definition { get; }
-
-    public RouteDefinitionBuilder RouteId(string id)
-    {
-        Definition.Id = id;
-        return this;
-    }
-
-    public RouteDefinitionBuilder RouteDescription(string description)
-    {
-        Definition.Description = description;
-        return this;
-    }
-
-    public RouteDefinitionBuilder RouteGroup(string group)
-    {
-        Definition.Group = group;
-        return this;
-    }
-
-    public RouteDefinitionBuilder AutoStartup(bool autoStartup)
-    {
-        Definition.AutoStartup = autoStartup;
-        return this;
-    }
-
-    public RouteDefinitionBuilder StartupOrder(int order)
-    {
-        Definition.StartupOrder = order;
-        return this;
-    }
-
-    public RouteDefinitionBuilder RouteProperty(string key, object? value)
-    {
-        Definition.Properties[key] = value;
-        return this;
     }
 }

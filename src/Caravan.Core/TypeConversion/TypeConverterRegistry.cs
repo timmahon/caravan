@@ -6,27 +6,6 @@ using System.Text;
 
 namespace Caravan.TypeConversion;
 
-/// <summary>Converts a value to another type. Return <c>false</c> when the conversion is not supported.</summary>
-public delegate bool TypeConverterFunc(object value, Exchange? exchange, out object? result);
-
-/// <summary>No conversion exists from a value to a type.</summary>
-public class NoTypeConversionAvailableException(object? value, Type toType, Exception? inner = null)
-    : CaravanException($"No type converter available to convert from type: {value?.GetType().FullName ?? "null"} to the required type: {toType.FullName}", inner)
-{
-    public object? Value { get; } = value;
-
-    public Type ToType { get; } = toType;
-}
-
-/// <summary>Converts between types, like Camel's <c>TypeConverter</c>.</summary>
-public interface ITypeConverter
-{
-    /// <summary>Converts <paramref name="value"/>; returns null for null. Throws <see cref="NoTypeConversionAvailableException"/> if not possible.</summary>
-    object? Convert(Type toType, Exchange? exchange, object? value);
-
-    bool TryConvert(Type toType, Exchange? exchange, object? value, out object? result);
-}
-
 /// <summary>
 /// Registry of type converters. Built-in conversions cover strings, numbers, booleans, enums, dates,
 /// <see cref="TimeSpan"/>, <see cref="Guid"/>, byte arrays, streams, and collections. Custom converters
@@ -37,6 +16,7 @@ public sealed class TypeConverterRegistry : ITypeConverter
     private readonly ConcurrentDictionary<(Type From, Type To), TypeConverterFunc> _converters = new();
     private readonly List<(Type To, TypeConverterFunc Converter)> _fallbacks = [];
 
+    /// <summary>Creates a registry with the built-in converters.</summary>
     public TypeConverterRegistry()
     {
         RegisterBuiltIns();
@@ -51,6 +31,7 @@ public sealed class TypeConverterRegistry : ITypeConverter
             return true;
         };
 
+    /// <summary>Registers a converter from <paramref name="from"/> to <paramref name="to"/>.</summary>
     public void AddConverter(Type from, Type to, TypeConverterFunc converter) => _converters[(from, to)] = converter;
 
     /// <summary>Registers a converter tried for any source type when no direct converter exists.</summary>
@@ -62,6 +43,7 @@ public sealed class TypeConverterRegistry : ITypeConverter
         }
     }
 
+    /// <inheritdoc />
     public object? Convert(Type toType, Exchange? exchange, object? value)
     {
         if (TryConvert(toType, exchange, value, out var result))
@@ -72,6 +54,7 @@ public sealed class TypeConverterRegistry : ITypeConverter
         throw new NoTypeConversionAvailableException(value, toType);
     }
 
+    /// <inheritdoc />
     public bool TryConvert(Type toType, Exchange? exchange, object? value, out object? result)
     {
         result = null;

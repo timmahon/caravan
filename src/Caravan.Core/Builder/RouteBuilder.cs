@@ -2,13 +2,6 @@ using Caravan.Model;
 
 namespace Caravan.Builder;
 
-/// <summary>Something that adds routes to a context.</summary>
-public interface IRoutesBuilder
-{
-    /// <summary>Builds the route definitions. Called once when the routes are added to <paramref name="context"/>.</summary>
-    IReadOnlyList<RouteDefinition> Build(ICaravanContext context);
-}
-
 /// <summary>
 /// Base class for defining routes in C# (Camel's <c>RouteBuilder</c>):
 /// <code>
@@ -45,6 +38,7 @@ public abstract class RouteBuilder : IRoutesBuilder
         return new RouteDefinitionBuilder(route);
     }
 
+    /// <inheritdoc />
     public IReadOnlyList<RouteDefinition> Build(ICaravanContext context)
     {
         _context = context;
@@ -72,13 +66,4 @@ public abstract class RouteBuilder : IRoutesBuilder
     {
         public override void Configure() => configure(this);
     }
-}
-
-/// <summary>
-/// Hooks invoked after a <see cref="RouteBuilder"/> has configured its routes. Features such as
-/// route-scoped configuration use this to post-process definitions.
-/// </summary>
-public sealed class RouteBuilderHooks
-{
-    public List<Action<RouteBuilder, List<RouteDefinition>>> Hooks { get; } = [];
 }

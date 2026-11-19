@@ -11,6 +11,7 @@ public sealed class RouteContext
 {
     private readonly List<object> _services = [];
 
+    /// <summary>Creates the state for building the route <paramref name="routeId"/>.</summary>
     public RouteContext(ICaravanContext context, RouteDefinition definition, string routeId)
     {
         Context = context;
@@ -18,10 +19,13 @@ public sealed class RouteContext
         RouteId = routeId;
     }
 
+    /// <summary>The context the route belongs to.</summary>
     public ICaravanContext Context { get; }
 
+    /// <summary>The route being built.</summary>
     public RouteDefinition Definition { get; }
 
+    /// <summary>The route id.</summary>
     public string RouteId { get; }
 
     /// <summary>Services (processors, producers, ...) started and stopped with the route.</summary>
@@ -36,6 +40,7 @@ public sealed class RouteContext
     /// <summary>Wraps each node with error handling (set by the error handling feature).</summary>
     public IErrorHandlerFactory? ErrorHandlerFactory { get; set; }
 
+    /// <summary>Registers a service started and stopped with the route (added once).</summary>
     public void AddService(object service)
     {
         if (!_services.Contains(service))

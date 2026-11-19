@@ -11,6 +11,7 @@ public abstract class ProcessorDefinition
     /// <summary>The node id; generated from <see cref="ShortName"/> when not set.</summary>
     public string? Id { get; set; }
 
+    /// <summary>A human-readable description of the node.</summary>
     public string? Description { get; set; }
 
     /// <summary>Whether this node is disabled (skipped when the route is built).</summary>
@@ -34,13 +35,6 @@ public abstract class ProcessorDefinition
     /// <summary>A short human-readable label, e.g. <c>to[mock:result]</c>.</summary>
     public virtual string Label => ShortName;
 
+    /// <inheritdoc />
     public override string ToString() => Id is null ? Label : $"{Label} (id={Id})";
-}
-
-/// <summary>A definition that owns a block of nested steps.</summary>
-public abstract class OutputDefinition : ProcessorDefinition
-{
-    public List<ProcessorDefinition> Outputs { get; } = [];
-
-    public override IEnumerable<ProcessorDefinition> Children => Outputs;
 }

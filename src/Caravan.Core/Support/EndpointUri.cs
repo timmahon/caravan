@@ -14,13 +14,17 @@ public sealed class EndpointUri
         Parameters = parameters;
     }
 
+    /// <summary>The URI scheme (component name).</summary>
     public string Scheme { get; }
 
     /// <summary>The part between the scheme and the query, without leading slashes.</summary>
     public string Path { get; }
 
+    /// <summary>The decoded query parameters (<c>RAW(...)</c> values kept verbatim).</summary>
     public IReadOnlyDictionary<string, string> Parameters { get; }
 
+    /// <summary>Parses <c>scheme:path?query</c> (or <c>scheme://path?query</c>).</summary>
+    /// <exception cref="ResolveEndpointFailedException">The URI is invalid.</exception>
     public static EndpointUri Parse(string uri)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(uri);
@@ -50,6 +54,7 @@ public sealed class EndpointUri
         return new EndpointUri(scheme, rest, ParseQuery(query));
     }
 
+    /// <summary>Parses a query string into a dictionary, decoding values except <c>RAW(...)</c> ones.</summary>
     public static Dictionary<string, string> ParseQuery(string query)
     {
         var result = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -148,6 +153,7 @@ public sealed class EndpointUri
         return Uri.UnescapeDataString(value.Replace('+', ' '));
     }
 
+    /// <summary>Returns the normalized URI: scheme, path and parameters sorted by name.</summary>
     public override string ToString() => Parameters.Count == 0
         ? $"{Scheme}:{Path}"
         : $"{Scheme}:{Path}?{string.Join('&', Parameters.Select(p => p.Key + "=" + p.Value))}";

@@ -3,46 +3,6 @@ using Caravan.Spi;
 
 namespace Caravan;
 
-/// <summary>
-/// Sends messages to endpoints from application code (Camel's <c>ProducerTemplate</c>).
-/// <c>Send*</c> methods are fire-and-forget (InOnly), <c>Request*</c> methods are request/reply (InOut).
-/// Methods returning a body throw <see cref="CaravanExecutionException"/> when routing failed;
-/// methods returning the <see cref="Exchange"/> leave the exception on the exchange.
-/// </summary>
-public interface IProducerTemplate : IAsyncDisposable
-{
-    /// <summary>The endpoint used by overloads that take no URI.</summary>
-    string? DefaultEndpointUri { get; set; }
-
-    Task<Exchange> SendAsync(string uri, Exchange exchange);
-
-    Task<Exchange> SendAsync(string uri, Action<Exchange> configure, ExchangePattern pattern = ExchangePattern.InOnly);
-
-    Task SendBodyAsync(string uri, object? body);
-
-    Task SendBodyAsync(object? body);
-
-    Task SendBodyAndHeaderAsync(string uri, object? body, string header, object? headerValue);
-
-    Task SendBodyAndHeadersAsync(string uri, object? body, IDictionary<string, object?> headers);
-
-    Task SendBodyAndPropertyAsync(string uri, object? body, string property, object? propertyValue);
-
-    Task<object?> RequestBodyAsync(string uri, object? body);
-
-    Task<object?> RequestBodyAsync(object? body);
-
-    Task<T?> RequestBodyAsync<T>(string uri, object? body);
-
-    Task<object?> RequestBodyAndHeaderAsync(string uri, object? body, string header, object? headerValue);
-
-    Task<T?> RequestBodyAndHeaderAsync<T>(string uri, object? body, string header, object? headerValue);
-
-    Task<object?> RequestBodyAndHeadersAsync(string uri, object? body, IDictionary<string, object?> headers);
-
-    Task<T?> RequestBodyAndHeadersAsync<T>(string uri, object? body, IDictionary<string, object?> headers);
-}
-
 internal sealed class ProducerTemplate(ICaravanContext context) : IProducerTemplate
 {
     private readonly ConcurrentDictionary<IEndpoint, Lazy<Task<IProducer>>> _producers = new();

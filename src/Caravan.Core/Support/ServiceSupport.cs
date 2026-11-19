@@ -10,12 +10,16 @@ public abstract class ServiceSupport : ISuspendableService
 {
     private readonly SemaphoreSlim _lock = new(1, 1);
 
+    /// <inheritdoc />
     public ServiceStatus Status { get; private set; } = ServiceStatus.Initialized;
 
+    /// <summary>Whether the service is started.</summary>
     public bool IsStarted => Status == ServiceStatus.Started;
 
+    /// <summary>Whether the service may process work (starting, started or suspended).</summary>
     public bool IsRunAllowed => Status is ServiceStatus.Starting or ServiceStatus.Started or ServiceStatus.Suspended;
 
+    /// <inheritdoc />
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -52,6 +56,7 @@ public abstract class ServiceSupport : ISuspendableService
         }
     }
 
+    /// <inheritdoc />
     public async Task StopAsync(CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -79,6 +84,7 @@ public abstract class ServiceSupport : ISuspendableService
         }
     }
 
+    /// <inheritdoc />
     public async Task SuspendAsync(CancellationToken cancellationToken = default)
     {
         await _lock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -99,11 +105,14 @@ public abstract class ServiceSupport : ISuspendableService
         }
     }
 
+    /// <inheritdoc />
     public Task ResumeAsync(CancellationToken cancellationToken = default) =>
         Status == ServiceStatus.Suspended ? StartAsync(cancellationToken) : Task.CompletedTask;
 
+    /// <summary>Starts the service; called once per start.</summary>
     protected virtual Task DoStartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
+    /// <summary>Stops the service; called once per stop.</summary>
     protected virtual Task DoStopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
     /// <summary>Default suspend behaviour is to stop.</summary>

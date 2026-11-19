@@ -43,6 +43,7 @@ public static class PropertyBinder
         return true;
     }
 
+    /// <summary>Whether <paramref name="type"/> has a public settable property named <paramref name="name"/> (case-insensitive).</summary>
     public static bool HasProperty(Type type, string name) => GetProperties(type).ContainsKey(name);
 
     private static void SetProperty(ICaravanContext context, object target, PropertyInfo property, object? value)

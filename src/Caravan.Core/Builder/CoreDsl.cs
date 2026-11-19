@@ -42,6 +42,7 @@ public static class CoreDsl
     public static T InOut<T>(this T steps, string uri)
         where T : RouteSteps => steps.To(ExchangePattern.InOut, uri);
 
+    /// <summary>Runs a custom processor.</summary>
     public static T Process<T>(this T steps, IProcessor processor)
         where T : RouteSteps
     {
@@ -49,9 +50,11 @@ public static class CoreDsl
         return steps;
     }
 
+    /// <summary>Runs a synchronous lambda on the exchange.</summary>
     public static T Process<T>(this T steps, Action<Exchange> processor)
         where T : RouteSteps => steps.Process(DelegateProcessor.From(processor));
 
+    /// <summary>Runs an asynchronous lambda on the exchange.</summary>
     public static T Process<T>(this T steps, Func<Exchange, Task> processor)
         where T : RouteSteps => steps.Process(DelegateProcessor.From(processor));
 
@@ -63,6 +66,7 @@ public static class CoreDsl
         return steps;
     }
 
+    /// <summary>Replaces the body with the value of <paramref name="expression"/>.</summary>
     public static T SetBody<T>(this T steps, IExpression expression)
         where T : RouteSteps
     {
@@ -70,6 +74,7 @@ public static class CoreDsl
         return steps;
     }
 
+    /// <summary>Replaces the body with the result of a function of the exchange.</summary>
     public static T SetBody<T>(this T steps, Func<Exchange, object?> expression)
         where T : RouteSteps => steps.SetBody(new FuncExpression(expression));
 
@@ -77,6 +82,7 @@ public static class CoreDsl
     public static T SetBody<T, TIn>(this T steps, Func<TIn, object?> expression)
         where T : RouteSteps => steps.SetBody(new FuncExpression(e => expression(e.Message.GetBody<TIn>()!)));
 
+    /// <summary>Transforms the body into the value of <paramref name="expression"/>.</summary>
     public static T Transform<T>(this T steps, IExpression expression)
         where T : RouteSteps
     {
@@ -84,6 +90,7 @@ public static class CoreDsl
         return steps;
     }
 
+    /// <summary>Transforms the body into the result of a function of the exchange.</summary>
     public static T Transform<T>(this T steps, Func<Exchange, object?> expression)
         where T : RouteSteps => steps.Transform(new FuncExpression(expression));
 
@@ -91,6 +98,7 @@ public static class CoreDsl
     public static T Transform<T, TIn, TOut>(this T steps, Func<TIn, TOut> transform)
         where T : RouteSteps => steps.Transform(new FuncExpression(e => transform(e.Message.GetBody<TIn>()!)));
 
+    /// <summary>Sets the header <paramref name="name"/> to the value of <paramref name="expression"/>.</summary>
     public static T SetHeader<T>(this T steps, string name, IExpression expression)
         where T : RouteSteps
     {
@@ -98,6 +106,7 @@ public static class CoreDsl
         return steps;
     }
 
+    /// <summary>Sets a header from a function of the exchange.</summary>
     public static T SetHeader<T>(this T steps, string name, Func<Exchange, object?> expression)
         where T : RouteSteps => steps.SetHeader(name, new FuncExpression(expression));
 
