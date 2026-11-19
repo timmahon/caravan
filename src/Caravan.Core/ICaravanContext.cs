@@ -29,6 +29,12 @@ public interface ICaravanContext : IService, IAsyncDisposable
     /// <summary>Whether a copy of the original message is kept for <c>useOriginalMessage</c> (default false, as in Camel).</summary>
     bool AllowUseOriginalMessage { get; set; }
 
+    /// <summary>
+    /// The default error handler of the context's routes, used by routes (and route builders) that configure none; when null a
+    /// <see cref="Model.DefaultErrorHandlerDefinition"/> is used. Takes effect for routes created afterwards.
+    /// </summary>
+    Model.ErrorHandlerDefinition? ErrorHandler { get; set; }
+
     /// <summary>Cancelled when the context is shutting down.</summary>
     CancellationToken ShutdownToken { get; }
 

@@ -36,4 +36,53 @@ public class DslOverloadTests : ContextTestBase
 
         Assert.Equal(19, route.Outputs.Count);
     }
+
+    [Fact]
+    public void Error_handling_lambda_shapes_bind_to_a_single_overload()
+    {
+        var routes = RouteBuilder.Create(b =>
+        {
+            b.ErrorHandler(b.DeadLetterChannel("mock:dead")
+                .MaximumRedeliveries(2)
+                .RedeliveryDelay(100)
+                .RedeliveryDelay(TimeSpan.FromMilliseconds(100))
+                .RetryWhile(_ => true)
+                .RetryWhile(_ => throw new InvalidOperationException())
+                .OnRedelivery(_ => { })
+                .OnRedelivery(_ => throw new InvalidOperationException())
+                .OnPrepareFailure(e => e.Message.Body = null)
+                .OnExceptionOccurred(_ => { }));
+            b.OnException<IOException>(o => o
+                .Handled(true)
+                .Handled(_ => true)
+                .Handled(Pred.Constant(true))
+                .Continued(_ => false)
+                .OnWhen(_ => true)
+                .RetryWhile(_ => false)
+                .OnRedelivery(_ => { })
+                .MaximumRedeliveries(1)
+                .To("mock:error"));
+            b.OnException([typeof(IOException), typeof(TimeoutException)], o => o.Continued(true));
+            b.OnCompletion(c => c.OnWhen(_ => true).OnWhen(Expr.Body().IsNull()).To("mock:done"));
+            b.From("direct:start")
+                .OnException<InvalidOperationException>(o => o.Handled(e => e.Message.Body is null))
+                .OnCompletion(c => c.OnFailureOnly())
+                .DoTry(
+                    t => t.ThrowException(new IOException()).ThrowException(_ => new IOException()).ThrowException(_ => throw new IOException()),
+                    c => c
+                        .DoCatch<IOException>(_ => { })
+                        .DoCatch<IOException>(_ => { }, onWhen: _ => true)
+                        .DoCatch<IOException>(_ => { }, Pred.Constant(true))
+                        .DoCatch([typeof(IOException)], _ => { }, onWhen: e => e.Message.Body is null)
+                        .DoFinally(f => f.Rollback()))
+                .ThrowException(typeof(IOException), "x")
+                .MarkRollbackOnly()
+                .MarkRollbackOnlyLast()
+                .Rollback("m");
+        }).Build(Context).Single();
+
+        Assert.Equal(5, routes.Outputs.Count);
+        Assert.Equal(3, routes.OnExceptions.Count);
+        Assert.Single(routes.OnCompletions);
+    }
 }

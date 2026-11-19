@@ -45,6 +45,12 @@ internal sealed class RouteProcessor(Route route, IProcessor pipeline) : INaviga
         finally
         {
             exchange.CurrentRouteId = previousRouteId;
+            if (unitOfWork is null)
+            {
+                // markRollbackOnlyLast only rolls back the current route: the calling route continues.
+                exchange.IsRollbackOnlyLast = false;
+            }
+
             try
             {
                 if (unitOfWork is not null)

@@ -91,7 +91,7 @@ public sealed class DefaultUnitOfWork : IUnitOfWork
         {
             try
             {
-                if (exchange.IsFailed || exchange.IsRollbackOnly)
+                if (exchange.IsFailed || exchange.IsRollbackOnly || exchange.IsRollbackOnlyLast)
                 {
                     await synchronization.OnFailureAsync(exchange).ConfigureAwait(false);
                 }

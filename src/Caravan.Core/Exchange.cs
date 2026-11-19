@@ -75,6 +75,25 @@ public sealed class Exchange
     /// <summary>Marks the exchange for rollback without an exception.</summary>
     public bool IsRollbackOnly { get; set; }
 
+    /// <summary>
+    /// Marks only the current route for rollback (the <c>markRollbackOnlyLast</c> EIP): routing stops in the current route,
+    /// and the flag is cleared when the exchange returns to a calling route, which then continues.
+    /// </summary>
+    public bool IsRollbackOnlyLast { get; set; }
+
+    /// <summary>
+    /// Set by an error handler when it handled a failure (an <c>onException</c> with <c>handled(true)</c> or a dead letter
+    /// channel): routing stops, but the exchange is not failed. Not copied by <see cref="Copy"/>.
+    /// </summary>
+    public bool ErrorHandlerHandled { get; set; }
+
+    /// <summary>
+    /// Set by an error handler that has exhausted its redeliveries without handling the failure, so error handlers of
+    /// enclosing nodes and calling routes let the failure through instead of handling it again. Cleared when the
+    /// failure is caught (<c>doCatch</c>). Not copied by <see cref="Copy"/>.
+    /// </summary>
+    public bool IsRedeliveryExhausted { get; set; }
+
     /// <summary>Cancellation for this exchange, typically linked to the context shutdown.</summary>
     public CancellationToken CancellationToken { get; set; }
 
@@ -174,6 +193,7 @@ public sealed class Exchange
             CurrentRouteId = CurrentRouteId,
             IsRouteStop = IsRouteStop,
             IsRollbackOnly = IsRollbackOnly,
+            IsRollbackOnlyLast = IsRollbackOnlyLast,
             CancellationToken = CancellationToken,
         };
         copy._message = _message.Copy(copy);
@@ -191,6 +211,8 @@ public sealed class Exchange
         copy.ExchangeId = Guid.NewGuid().ToString("N");
         copy.Exception = null;
         copy.IsRouteStop = false;
+        copy.IsRollbackOnly = false;
+        copy.IsRollbackOnlyLast = false;
         copy.UnitOfWork = null;
         copy.SetProperty(ExchangePropertyKeys.CorrelationId, ExchangeId);
         return copy;
@@ -209,6 +231,9 @@ public sealed class Exchange
         Exception = source.Exception;
         IsRouteStop = source.IsRouteStop;
         IsRollbackOnly = source.IsRollbackOnly;
+        IsRollbackOnlyLast = source.IsRollbackOnlyLast;
+        ErrorHandlerHandled = source.ErrorHandlerHandled;
+        IsRedeliveryExhausted = source.IsRedeliveryExhausted;
     }
 
     /// <summary>Removes and returns the callbacks registered with <see cref="AddOnCompletion"/> before a unit of work existed.</summary>

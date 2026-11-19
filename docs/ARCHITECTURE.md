@@ -27,6 +27,8 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `Channel` | Wraps every node: catches exceptions into `exchange.Exception`, skips stopped exchanges | `DefaultChannel` |
 | `IInterceptStrategy` | Wraps every node (tracing, metrics, interception, advice) | `InterceptStrategy` |
 | `IErrorHandlerFactory` | Wraps every node with error handling (set on `RouteContext.ErrorHandlerFactory`) | `ErrorHandler` |
+| `ErrorHandlerDefinition` | Route error handler configuration: default, dead letter channel, none (see "Error handling") | `ErrorHandlerFactory` |
+| `RedeliveryErrorHandler` / `RedeliveryPolicy` | Per-node redelivery, `onException`, dead letter channel | `RedeliveryErrorHandler` / `RedeliveryPolicy` |
 | `IUnitOfWork` / `ISynchronization` | Completion callbacks per exchange | `UnitOfWork` / `Synchronization` |
 | `IEventNotifier` | Context, route and exchange events | `EventNotifier` |
 | `IRegistry` | Named/typed beans, optionally backed by `IServiceProvider` | `Registry` |
@@ -41,13 +43,61 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 ### Error semantics
 
 - Processors **may throw**. `Channel` catches the exception and sets `exchange.Exception`.
-- `Pipeline` stops when `exchange.IsFailed`, `exchange.IsRouteStop` or `exchange.IsRollbackOnly`.
+- `Pipeline` stops when `exchange.IsFailed`, `exchange.IsRouteStop`, `exchange.IsRollbackOnly`/`IsRollbackOnlyLast` or
+  `exchange.ErrorHandlerHandled` (a failure handled by an error handler ends routing, as in Camel).
 - `RouteProcessor` creates the unit of work only if the exchange has none (so `direct` calls between routes share one).
   Callbacks added with `Exchange.AddOnCompletion` before a unit of work exists are taken over by it. When an exchange is
   handed to another task (e.g. `seda`), its synchronizations are handed over to the copy unless
   `ISynchronization.AllowHandover` is false.
 - `IProducerTemplate.Send*Body*` / `Request*` throw `CaravanExecutionException` when the exchange failed;
   `SendAsync(uri, exchange)` returns the exchange with `Exception` set instead.
+
+### Error handling
+
+Camel's error handling model, built on `IErrorHandlerFactory` (see "Extension points"):
+
+- **Configuration.** An `ErrorHandlerDefinition` (`Caravan.Model`) is chosen per route: `RouteDefinition.ErrorHandler`
+  (`.ErrorHandler(...)` on a route) → the route builder's (`RouteBuilder.ErrorHandler(...)`) → `ICaravanContext.ErrorHandler`
+  → `DefaultErrorHandlerDefinition`. `CaravanContext.CreateRoute` calls `CreateFactory(routeContext)` and sets
+  `RouteContext.ErrorHandlerFactory` *before* the `RouteContextConfigurers` run (they may still replace it). Built-ins:
+  `DefaultErrorHandler()` (no redelivery, logs at ERROR with the exchange, failure propagates), `DeadLetterChannel(uri)`
+  (sends exhausted failures to `uri` and marks them handled) and `NoErrorHandler()` (returns no factory: nodes are not
+  wrapped, `onException` does not apply). Options are extension methods: `RedeliveryDsl` (redelivery policy and logging, shared
+  with `onException`) and `ErrorHandlerDsl` (`OnRedelivery`, `OnExceptionOccurred`, `OnPrepareFailure`, `RetryWhile`,
+  `UseOriginalMessage`/`UseOriginalBody`). Using the original message turns `AllowUseOriginalMessage` on automatically.
+- **Per node.** `RedeliveryErrorHandlerFactory` wraps every node in a `RedeliveryErrorHandler`, so a redelivery retries only the
+  failing node, with the message restored as it was before the node's first attempt and the `CaravanRedelivered`,
+  `CaravanRedeliveryCounter` and `CaravanRedeliveryMaxCounter` headers set. Delays (`RedeliveryPolicy`: fixed, exponential
+  back-off, collision avoidance, `delayPattern`) are awaited on `context.TimeProvider`. Nodes of `doTry`/`doCatch`/`doFinally`
+  and of `onException` blocks are **not** wrapped: they handle errors themselves.
+- **Exhaustion.** When redelivery is exhausted the failure processor runs on the same exchange with `Exception` cleared and
+  `CaravanExceptionCaught`, `CaravanFailureEndpoint`, `CaravanFailureRouteId` and `CaravanFailureTimestamp` set: the matching
+  `onException` block, else the dead letter endpoint. Then the failure is *handled* (`ErrorHandlerHandled`: routing stops, the
+  caller sees success), *continued* (routing goes on with the next node) or *propagated* (exception restored,
+  `IsRedeliveryExhausted` set). An exhausted exchange passes through the error handlers of enclosing nodes and calling routes
+  untouched, so a failure is handled once, by the innermost error handler; a sub-route with `NoErrorHandler()` leaves it to the
+  caller. A new exception thrown by the failure processor fails the exchange and is not handled again (the dead letter channel
+  handles it when `deadLetterHandleNewException`, the default). Events: `ExchangeRedelivery`, `ExchangeFailureHandled`.
+- **onException.** `OnExceptionDefinition`s live in `RouteDefinition.OnExceptions`: route-scoped ones (`.OnException<T>(...)` on a
+  route) and the route builder's (`RouteBuilder.OnException<T>(...)`, added to each of its routes by `RouteBuilder.Build`).
+  `ExceptionPolicyStrategy` picks one like Camel: route-scoped before global, cause chain from the innermost exception
+  outwards, exact type wins at once, else the closest type in the hierarchy; `OnWhen` filters. A clause's redelivery options
+  override the error handler's; its steps are its own block (`OnExceptionBuilder` is a `RouteSteps`).
+- **doTry.** `TryProcessor` runs the try block, the first catching `doCatch` (cause chain considered) and the `doFinally`; a pending
+  exception is restored after `doFinally`. The route's error handler and `onException` do not apply inside `doTry`.
+- **onCompletion.** `RouteDefinition.OnCompletions` (route-scoped ones replace the builder's). `OnCompletionProcessor` wraps the
+  route's pipeline: it registers one `ISynchronization` per block on the unit of work (once per exchange, even across routes).
+  `AfterConsumer` (default) blocks run when the unit of work is done, on a correlated `InOnly` copy; `BeforeConsumer` blocks run
+  when the registering route finishes, on the exchange itself (they can change the reply); `ParallelProcessing` runs a copy in
+  the background. Failures in blocks are logged and ignored.
+- **Rollback.** `Rollback(msg)` sets `IsRollbackOnly` and throws `RollbackExchangeException` (never redelivered);
+  `MarkRollbackOnly()` only marks the exchange (routing stops, unit of work fails); `MarkRollbackOnlyLast()` stops the current
+  route only: `RouteProcessor` clears the flag when the exchange returns to a calling route.
+
+Differences from Camel: redelivery delays are always non-blocking (`asyncDelayedRedelivery` is accepted but has no effect);
+the dead letter endpoint and `onException` blocks see the redelivery headers, which are removed once the failure is handled
+or continued; `AfterConsumer` `onCompletion` blocks run on a copy because the unit of work completes before a `direct` caller
+gets the reply; `markRollbackOnlyLast` scopes to the current route since there are no transactions.
 
 ### Endpoint URIs
 
@@ -67,7 +117,7 @@ Optional features hook into the core without changing it:
 
 - `ICaravanContext.GetOrAddExtension<T>()` / `SetExtension<T>()` – store feature state on the context.
 - `RouteContextConfigurers` (context extension) – callbacks run for each route before its processors
-  are built (e.g. to set `RouteContext.ErrorHandlerFactory`).
+  are built, after the route's configured error handler factory is set (e.g. to replace `RouteContext.ErrorHandlerFactory`).
 - `RouteBuilderHooks` (context extension) – post-process route definitions after `Configure()`.
 - `RouteDefinition.Extensions` – feature-specific per-route configuration keyed by type.
 - `ICaravanContext.InterceptStrategies` / `RouteContext.InterceptStrategies` – wrap nodes.
