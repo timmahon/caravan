@@ -28,6 +28,8 @@ internal sealed class RouteProcessor(Route route, IProcessor pipeline) : INaviga
             EventHelper.Notify(context, CaravanEventType.ExchangeCreated, exchange, route.Endpoint, route.Id);
         }
 
+        var previousRouteId = exchange.CurrentRouteId;
+        exchange.CurrentRouteId = route.Id;
         route.IncrementInflight();
         try
         {
@@ -39,6 +41,7 @@ internal sealed class RouteProcessor(Route route, IProcessor pipeline) : INaviga
         }
         finally
         {
+            exchange.CurrentRouteId = previousRouteId;
             route.DecrementInflight();
             if (unitOfWork is not null)
             {

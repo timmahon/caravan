@@ -62,6 +62,12 @@ public sealed class Exchange
     /// <summary>The id of the route that created this exchange.</summary>
     public string? FromRouteId { get; set; }
 
+    /// <summary>
+    /// The id of the route currently processing the exchange (Camel's <c>${routeId}</c>). Set when a route
+    /// receives the exchange and restored when it returns, e.g. after a <c>direct</c> call.
+    /// </summary>
+    public string? CurrentRouteId { get; set; }
+
     /// <summary>When set, the routing engine stops routing this exchange (the <c>stop</c> EIP).</summary>
     public bool IsRouteStop { get; set; }
 
@@ -145,6 +151,7 @@ public sealed class Exchange
             Exception = Exception,
             FromEndpoint = FromEndpoint,
             FromRouteId = FromRouteId,
+            CurrentRouteId = CurrentRouteId,
             IsRouteStop = IsRouteStop,
             IsRollbackOnly = IsRollbackOnly,
             CancellationToken = CancellationToken,
