@@ -76,4 +76,44 @@ public sealed class RouteDefinitionBuilder : RouteSteps
         Definition.Properties[key] = value;
         return this;
     }
+
+    /// <summary>Sets the route's error handler (overrides the route builder's and the context's).</summary>
+    public RouteDefinitionBuilder ErrorHandler(ErrorHandlerDefinition errorHandler)
+    {
+        ArgumentNullException.ThrowIfNull(errorHandler);
+        Definition.ErrorHandler = errorHandler;
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a route-scoped <c>onException</c> clause for <typeparamref name="TException"/> (takes precedence over the route builder's):
+    /// <c>.OnException&lt;IOException&gt;(o =&gt; o.Handled(true).To("mock:error"))</c>.
+    /// </summary>
+    public RouteDefinitionBuilder OnException<TException>(Action<OnExceptionBuilder>? configure = null)
+        where TException : Exception => OnException([typeof(TException)], configure);
+
+    /// <summary>Adds a route-scoped <c>onException</c> clause for <paramref name="exceptionType"/>.</summary>
+    public RouteDefinitionBuilder OnException(Type exceptionType, Action<OnExceptionBuilder>? configure = null) =>
+        OnException([exceptionType], configure);
+
+    /// <summary>Adds a route-scoped <c>onException</c> clause for any of <paramref name="exceptionTypes"/>.</summary>
+    public RouteDefinitionBuilder OnException(Type[] exceptionTypes, Action<OnExceptionBuilder>? configure = null)
+    {
+        var definition = new OnExceptionDefinition(exceptionTypes) { RouteScoped = true };
+        configure?.Invoke(new OnExceptionBuilder(definition, Definition));
+        Definition.OnExceptions.Add(definition);
+        return this;
+    }
+
+    /// <summary>
+    /// Adds a route-scoped <c>onCompletion</c> block (the route then ignores the route builder's):
+    /// <c>.OnCompletion(c =&gt; c.OnCompleteOnly().To("mock:done"))</c>.
+    /// </summary>
+    public RouteDefinitionBuilder OnCompletion(Action<OnCompletionBuilder> configure)
+    {
+        var definition = new OnCompletionDefinition { RouteScoped = true };
+        configure(new OnCompletionBuilder(definition, Definition));
+        Definition.OnCompletions.Add(definition);
+        return this;
+    }
 }

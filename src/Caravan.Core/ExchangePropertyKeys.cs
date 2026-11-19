@@ -11,10 +11,16 @@ public static class ExchangePropertyKeys
     public const string FailureEndpoint = "CaravanFailureEndpoint";
     /// <summary>The id of the route in which the exchange failed.</summary>
     public const string FailureRouteId = "CaravanFailureRouteId";
-    /// <summary>The exception caught by an error handler.</summary>
+    /// <summary>When the exchange failed (set by error handlers when redelivery is exhausted).</summary>
+    public const string FailureTimestamp = "CaravanFailureTimestamp";
+    /// <summary>True when a failure processor (dead letter channel or <c>onException</c> block) processed the failure.</summary>
+    public const string FailureHandled = "CaravanFailureHandled";
+    /// <summary>The exception caught by an error handler, <c>doCatch</c> or <c>doFinally</c>.</summary>
     public const string ExceptionCaught = "CaravanExceptionCaught";
     /// <summary>Whether an error handler handled the failure.</summary>
     public const string ErrorHandled = "CaravanErrorHandled";
+    /// <summary>Set to true on the exchange processed by an <c>onCompletion</c> block.</summary>
+    public const string OnCompletion = "CaravanOnCompletion";
     /// <summary>Whether the last <c>filter</c> (or <c>when</c>) predicate matched.</summary>
     public const string FilterMatched = "CaravanFilterMatched";
     /// <summary>When the exchange was created.</summary>

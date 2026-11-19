@@ -43,6 +43,18 @@ public sealed class RouteDefinition
     /// <summary>Arbitrary route properties.</summary>
     public Dictionary<string, object?> Properties { get; } = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// The route's error handler; when null the route builder's, then the context's (<see cref="ICaravanContext.ErrorHandler"/>),
+    /// then a <see cref="DefaultErrorHandlerDefinition"/> is used.
+    /// </summary>
+    public ErrorHandlerDefinition? ErrorHandler { get; set; }
+
+    /// <summary>The <c>onException</c> clauses applying to the route: its own (route scoped) and its route builder's.</summary>
+    public List<OnExceptionDefinition> OnExceptions { get; } = [];
+
+    /// <summary>The <c>onCompletion</c> blocks of the route: its own, or its route builder's when it has none.</summary>
+    public List<OnCompletionDefinition> OnCompletions { get; } = [];
+
     /// <summary>Feature-specific configuration attached to the route (error handler, route policies, ...).</summary>
     public Dictionary<Type, object> Extensions { get; } = [];
 

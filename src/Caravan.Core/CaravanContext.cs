@@ -92,6 +92,9 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     public bool AllowUseOriginalMessage { get; set; }
 
     /// <inheritdoc />
+    public ErrorHandlerDefinition? ErrorHandler { get; set; }
+
+    /// <inheritdoc />
     public CancellationToken ShutdownToken => _shutdown.Token;
 
     /// <inheritdoc />
@@ -446,6 +449,15 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         try
         {
             var routeContext = new RouteContext(this, definition, routeId);
+            var errorHandler = definition.ErrorHandler ?? ErrorHandler ?? new DefaultErrorHandlerDefinition();
+            if (errorHandler.RequiresOriginalMessage ||
+                definition.OnExceptions.Any(o => o.UseOriginalMessage || o.UseOriginalBody) ||
+                definition.OnCompletions.Any(o => o.UseOriginalMessage))
+            {
+                AllowUseOriginalMessage = true;
+            }
+
+            routeContext.ErrorHandlerFactory = errorHandler.CreateFactory(routeContext);
             foreach (var configurer in GetExtension<RouteContextConfigurers>()?.Configurers ?? [])
             {
                 configurer(routeContext);
@@ -453,6 +465,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
             var endpoint = GetEndpoint(definition.FromUri);
             var pipeline = routeContext.CreateBlockProcessor(definition.Outputs);
+            pipeline = OnCompletionProcessor.Wrap(routeContext, pipeline);
             var route = new Route(routeContext, endpoint, pipeline);
             lock (_routesLock)
             {
