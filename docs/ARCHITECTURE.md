@@ -77,6 +77,11 @@ Consumer ──> Route.Processor (RouteProcessor: unit of work, inflight, route 
 | `GenericFile<T>` / `IGenericFileOperations<T>` / `GenericFileEndpoint<T>` / `GenericFileConsumer<T>` / `GenericFileProducer<T>` | File-system-neutral consumer and producer logic, reusable by remote file components | `GenericFile` / `GenericFileOperations` / `GenericFileEndpoint` / `GenericFileConsumer` / `GenericFileProducer` |
 | `IGenericFileProcessStrategy<T>` / `IGenericFileExclusiveReadLockStrategy<T>` | What happens to a consumed file (noop, delete, move) and how it is locked (marker file, changed, OS lock, rename, idempotent) | `GenericFileProcessStrategy` / `GenericFileExclusiveReadLockStrategy` |
 | `IExceptionHandler` / `LoggingExceptionHandler` | Failures that cannot reach a caller (e.g. moving a file after processing) | `ExceptionHandler` / `LoggingExceptionHandler` |
+| `RestDefinition` / `VerbDefinition` / `RestParamDefinition` / `ResponseMessageDefinition` / `RestConfiguration` (`Caravan.Model.Rest`) | The REST DSL model and its context-wide configuration (see "REST DSL") | `RestDefinition` / `VerbDefinition` / `RestParamDefinition` / `ResponseMessageDefinition` / `RestConfiguration` |
+| `IRestConsumerFactory` / `RestComponent` / `RestEndpoint` | Transport SPI of the REST DSL and the `rest:` endpoints services consume from | `RestConsumerFactory` / `RestComponent` / `RestEndpoint` |
+| `RestBindingDefinition` / `RestBindingProcessor` | Binding, validation and CORS around a REST service | `RestBindingDefinition` / `RestBindingAdvice` |
+| `IHeaderFilterStrategy` / `DefaultHeaderFilterStrategy` | Which headers cross between messages and a transport | `HeaderFilterStrategy` / `DefaultHeaderFilterStrategy` |
+| `Caravan.AspNetCore`: `PlatformHttpComponent`, `PlatformHttpEngine`, `MapCaravan`, `OpenApiGenerator` | `platform-http` on ASP.NET Core endpoint routing, REST transport, OpenAPI, management and health endpoints (see "ASP.NET Core") | `camel-platform-http(-vertx)`, `camel-openapi-java`, management/health endpoints of Camel main |
 
 ### Error semantics
 
@@ -741,6 +746,97 @@ skipped and unlocked; directories are not created again while polling; no `probe
 locks, `readLockIdempotentReleaseDelay`, `copyAndDeleteOnRenameFail`/`renameUsingCopy` (`File.Move` copies across volumes),
 `startingDirectoryMustHaveAccess`, `bridgeErrorHandler`, `extendedAttributes` or `bufferSize`.
 
+### REST DSL
+
+Camel's REST DSL, transport-agnostic in `Caravan.Core` (Camel's rest DSL needs a `RestConsumerFactory` component the same way).
+
+- **Model** (`Caravan.Model.Rest`). `RestDefinition`: `Path`, `Id`, `Tag`, `Description`, `Consumes`/`Produces`, `BindingMode`,
+  `SkipBindingOnErrorCode`, `ClientRequestValidation`, `EnableCors`, `ApiDocs`, `Disabled`, `SecurityDefinitions` (`RestSecurityDefinition`:
+  basic, bearer, API key — documented, never enforced, as in Camel) and `SecurityRequirements`, and `Verbs`. `VerbDefinition`: `Method`, `Path`
+  (a URI template with `{name}` parameters), `Id`, `RouteId`, `Description`, `Consumes`/`Produces`, `Type`/`OutType` (`Type`s; an array type
+  for a list), the same binding options (null inherits the rest's, then the configuration's), `ApiDocs`, `Deprecated`, `Disabled`, `Params`
+  (`RestParamDefinition`: name, `RestParamType` path/query/header/body/formData, `Required` — default true as Camel —, `DefaultValue`,
+  `DataType`, `DataFormat`, `ArrayType`, `AllowableValues`, `Description`), `ResponseMessages` (code, message, `ResponseModel`, headers),
+  `Security`, and either `To` (Camel 4's way) or inline `Outputs`. `RestConfiguration` (context-wide, `context.GetRestConfiguration()`):
+  `Component`, `Host`/`Port`/`Scheme` (OpenAPI servers only), `ContextPath`, `ApiContextPath`, `ApiProperties`, `BindingMode` (`off`), `SkipBindingOnErrorCode`
+  (true), `ClientRequestValidation` (false), `EnableCors` (false) + `CorsHeaders` (Camel's defaults), `JsonDataFormat`/`XmlDataFormat`
+  (`json`/`xml`), `DataFormatProperties` (plain, or `json.in.`/`json.out.`/`xml.in.`/`xml.out.` prefixed), `EndpointProperties` (passed to the
+  consumers), `InlineRoutes` (true).
+- **DSL.** `RouteBuilder.RestConfiguration(c => c.BindingMode(RestBindingMode.Json)...)` changes the context's configuration while `Configure()`
+  runs; `RouteBuilder.Rest("/api/orders", r => r.Get("/{id}", v => v.Produces("application/json").OutType<Order>().To("direct:getOrder"))
+  .Post(v => v.Type<Order>().To("direct:createOrder")))` (`RestBuilder`, `RestVerbBuilder`, `RestParamBuilder`, `ResponseMessageBuilder`;
+  `Get/Post/Put/Patch/Delete/Head/Options/Verb`; `.Route(s => ...)` for inline steps). YAML: `rest`/`restConfiguration` (see "YAML DSL").
+- **Routes.** After `Configure()`, `RouteBuilder.Build` turns each enabled verb into a route (`RestRouteFactory`, Camel's
+  `asRouteDefinition`): `from("rest:get:/api/orders:/{id}?consumes=..&produces=..")`, id `RouteId ?? Id`, the verb in
+  `RouteDefinition.Extensions[typeof(VerbDefinition)]` (`context.GetRestServices()` lists them), and one top-level node, a
+  `RestBindingDefinition` (`restBinding`), whose block is the `to` or the inline steps. The builder's error handler, `onException`, intercepts
+  and route configurations apply as to any route; AdviceWith weaves inside the binding block. With `InlineRoutes`, a verb sending to
+  `direct:x` whose route is in the same builder and used by no other verb is merged with it (one route: the direct route's steps, options and
+  route-scoped clauses; its id unless the verb has one), as Camel 4 does.
+- **Transport SPI.** `rest:method:path[:uriTemplate]` endpoints (`RestComponent`, global) have no producer; their consumer comes from
+  `IRestConsumerFactory.CreateConsumer(context, processor, method, basePath, uriTemplate, consumes, produces, configuration, parameters)` of
+  the endpoint's `componentName`, else `RestConfiguration.Component`, else the only factory bean, else the `platform-http` component; unknown
+  endpoint options are passed on. The consumer starts and stops with the route.
+- **Binding** (`RestBindingProcessor`, Camel's `RestBindingAdvice`), around the block: CORS (`OPTIONS` answered at once, CORS headers on
+  responses); query parameters' default values set as headers when missing; client request validation (415 when the `Content-Type` is not
+  in `consumes`, 406 when `Accept` matches nothing in `produces` — wildcards and parameters handled —, 400 for a missing required body, query
+  parameter or header, a value outside `AllowableValues`, or a body that cannot be unmarshalled), which answers with
+  `CaravanHttpResponseCode` and a text body and skips the block; unmarshalling with the format chosen like Camel (`Content-Type`, else
+  `consumes`, else the mode; json first; `json_xml` sniffs `<`), to `Type` (JSON without type gives dictionaries; XML without type is left
+  as text); after the block, unless the exchange failed or (`skipBindingOnErrorCode`) the response code is ≥ 300, marshalling in the format
+  chosen by `Accept`, the response's own `Content-Type`, `produces`, then the request's format, and `Content-Type` set. Data formats are
+  resolved by name when the route is created and copied per service (typed instances), so a shared `json` data format is never reconfigured.
+
+Differences from Camel: bodies that already are text, bytes or streams are not marshalled (Camel's Jackson would quote a string); the
+request's `Content-Type` is not echoed as the response's; XML binding without a type does not fail; unbindable bodies give 400 only with
+client request validation (500 otherwise); `inlineRoutes` only merges routes of the same route builder; `host`/`port` only feed the OpenAPI
+document (the ASP.NET Core server decides where it listens); no REST producer (`rest:` in `to`), no `enableNoContentResponse` (an empty body
+is always 204), no data type contracts, OAuth2/OpenID/mutual TLS security definitions or `apiComponent`.
+
+### ASP.NET Core
+
+`src/Caravan.AspNetCore` (`FrameworkReference Microsoft.AspNetCore.App`, Caravan.Core + Caravan.Hosting, no other package):
+
+- **platform-http** (`platform-http:/path?httpMethodRestrict=GET,POST&consumes=..&produces=..&matchOnUriPrefix=true&muteException=..
+  &headerFilterStrategy=#bean`). The path is an ASP.NET Core route pattern. `PlatformHttpEngine` (one per service provider) owns an
+  `EndpointDataSource`: a consumer's start adds a `RouteEndpoint` (with `HttpMethodMetadata`), its stop or suspension removes it, and the
+  change token makes routing rebuild its matcher at once, so a stopped route answers 404 (another method on a served path: 405). Two consumers
+  serving the same pattern and method fail to start. Paths with CORS-enabled REST services and no `OPTIONS` consumer get a preflight endpoint.
+  Requests (`PlatformHttpBinding`): an `InOut` exchange whose token is linked to `RequestAborted` and the context's shutdown token; request
+  headers, then query parameters, form fields (`application/x-www-form-urlencoded`, body kept) and route values (`{id}`) become headers
+  (single values as `string`, repeated ones as `List<string>`), filtered by the endpoint's `IHeaderFilterStrategy` (`HttpHeaderFilterStrategy`:
+  `Caravan*` never enters); `CaravanHttpMethod`, `CaravanHttpUri`, `CaravanHttpUrl`, `CaravanHttpPath` (the remainder with
+  `matchOnUriPrefix`), `CaravanHttpQuery`, `CaravanHttpRawQuery`; the body is read into a stream cache (null when empty; the raw request
+  stream when stream caching is off). `consumes`/`produces` of an explicit `platform-http` URI answer 415/406. Responses: status from
+  `CaravanHttpResponseCode`, else 204 for an empty body, else 200 (Camel's rule); `CaravanHttpResponseText` as reason phrase; message headers
+  not filtered (`Caravan*`, hop-by-hop and request-only headers) become response headers; `Content-Type` from the header, else the single
+  `produces`; bodies: text (UTF-8), bytes, stream caches, streams (copied as they are read: large responses are streamed), other values through
+  the type converters or `ToString()`. A failed exchange answers 500 — or the status of `component.MapException<T>(code)` (closest base type)
+  — with the exception text, or an empty body with `muteException`; use `onException` with `handled` to answer anything else.
+- **REST transport.** `PlatformHttpComponent` is an `IRestConsumerFactory`: a service is served at `contextPath + path + uriTemplate`
+  with `httpMethodRestrict` set to its method and the configuration's `EndpointProperties` as options.
+- **Hosting.** `services.AddCaravan().AddAspNetCore(c => c.MapException<KeyNotFoundException>(404))` registers the engine and the component
+  and makes `platform-http` the REST component unless configured otherwise. `app.MapCaravan(o => ...)` (minimal APIs `WebApplication` or any
+  `IEndpointRouteBuilder`) adds the engine's data source, the OpenAPI document (at `contextPath + apiContextPath`, or `o.OpenApiPath`), the
+  health endpoints (`o.Health`, default on: `/caravan/health`, `/live`, `/ready` from the context's `HealthCheckRegistry`; JSON
+  `{status, checks}`, 503 when DOWN) and the management API (`o.Management`, default off: `GET /caravan/management`, `/routes`,
+  `/routes/{id}`, `/routes/{id}/processors`, `/routes/{id}/dump`, `/endpoints`, `/components`, `/circuit-breakers`, `/inflight`;
+  `POST /routes/{id}/start|stop|suspend|resume|reset`). It returns a convention builder covering all of them, the dynamic endpoints included
+  (`MapCaravan().RequireAuthorization()`). Without hosting: `context.AddComponent("platform-http", c)` and `app.MapPlatformHttp(c.Engine)`.
+- **OpenAPI** (`OpenApiGenerator.Generate(context)`, Camel's `camel-openapi-java`): an OpenAPI 3.1 document of the REST services whose routes
+  exist (removing a route removes its operation) and whose rest/verb `ApiDocs` is on: `info` from `ApiProperties` (`api.title`, `api.version`,
+  `api.description`, contact, license), `servers` from host/port/scheme/context path, tags (the rest's tag or path), one operation per verb
+  (`operationId`, `summary`, `deprecated`, parameters with type/format/enum/default — undeclared `{path}` parameters added —, `requestBody`
+  from `Type` or body/form parameters for each consumed media type, responses from `ResponseMessages` or a default 200 with `OutType`,
+  security), `components.securitySchemes`, and `components.schemas` produced by System.Text.Json's `JsonSchemaExporter` with the JSON
+  binding's naming (camelCase, strict numbers): named object types become components referenced with `$ref`, collections become arrays.
+
+Differences from Camel: the server is the application's ASP.NET Core server (no `platform-http` engine choice, port or SSL options); request
+headers are copied to the message but `Authorization`, `Cookie`, `Accept*`, `User-Agent`, `Origin`, conditional and hop-by-hop headers never
+go back into the response (Camel filters fewer), while `Cache-Control`/`Date` may be set by routes; query parameters override request headers
+of the same name; `suspend` removes the endpoint (404) rather than answering 503; management and health are opt-in/opt-out endpoints rather
+than Camel main's console; there is no `http`/`https` producer yet (calling HTTP services belongs to a connector built on `IHttpClientFactory`).
+
 ### Route templates
 
 Camel's route templates (and the base of Kamelets). `RouteBuilder.RouteTemplate("greet")` returns a `RouteTemplateBuilder`:
@@ -893,7 +989,7 @@ route's `RouteContext` — so they go away with the runtime routes when the cont
 - **Operations**: start/stop/suspend/resume route, `DumpRouteAsText` (indented model), `ListEndpoints` (sanitized URI, consuming routes, inbound and
   outbound hits), `ListComponents` (created and available), `ListCircuitBreakers`, `BrowseInflight`.
 
-There is no HTTP endpoint yet (row 16 brings ASP.NET Core).
+Over HTTP: `app.MapCaravan(o => o.Management = true)` (Caravan.AspNetCore, see "ASP.NET Core") maps this API under `/caravan/management`.
 
 ### Health checks
 
@@ -967,7 +1063,10 @@ types, data formats and beans are resolved there).
   errorHandler/errorHandlerRef, properties, from), `from`, `routeTemplate` (parameters, beans, `from` or `route`), `templatedRoute` (parameters,
   beans), `routeConfiguration` (errorHandler, and lists of `onException`, `onCompletion`, `intercept`, `interceptFrom`, `interceptSendToEndpoint`,
   items wrapped as Camel writes them or not), `beans`, `errorHandler` (`deadLetterChannel`, `defaultErrorHandler`, `noErrorHandler`,
-  `refErrorHandler`), `intercept`, `interceptFrom`, `interceptSendToEndpoint`, `onException`, `onCompletion`. `onException` and `onCompletion`
+  `refErrorHandler`), `intercept`, `interceptFrom`, `interceptSendToEndpoint`, `onException`, `onCompletion`, `rest` and `restConfiguration`
+  (`Catalog/RestCatalog`, Camel's shape: `- rest: { path: /api, get: [ { path: "/{id}", to: "direct:x", outType: Full.Type, param: [...],
+  responseMessage: [...] } ] }`, key/value lists for `apiProperty`, `dataFormatProperty`, `endpointProperty`, `corsHeaders`; type names may
+  end with `[]`; a verb may have `steps` instead of `to` as a Caravan extension; `options` verbs are a Caravan extension too). `onException` and `onCompletion`
   among the top-level steps of a route are route-scoped; deeper they are rejected. Several YAML documents (`---`) per file are read in order.
 - **Beans** (`BeanFactory`): `type`, `constructors` (list or index map; optional trailing parameters allowed), `factoryMethod` (static),
   `properties` (nested mappings and dotted keys create and set nested objects, lists fill list/array properties, values converted by the type
@@ -1001,7 +1100,7 @@ Coverage: every EIP definition of Caravan.Core has a step.
 
 Differences from Camel: unsupported Camel steps fail with a reason (`threads`, `transacted`, `policy`, variables — `setVariable(s)`,
 `removeVariable`, `convertVariableTo`, `variableSend/Receive` —, `serviceCall`, `tokenizer`, `poll`, `whenSkipSendToEndpoint`), as do the
-REST DSL (`rest`, `restConfiguration`, row 16), `camelContext`, top-level `dataFormats`, Kamelet resource files (`apiVersion`/`kind`), route
+`camelContext`, top-level `dataFormats`, Kamelet resource files (`apiVersion`/`kind`), route
 `precondition`/`nodePrefixId`/`routePolicy`/`inputType`/`outputType`, `templatedRoute.prefixId`, `transform` data types, bean
 `factoryBean`/`builderClass`/scripts and `...MethodName` aggregation strategies; Camel options without a Caravan equivalent (executor services,
 `allowOptimisedComponents`, `marker`, ...) are accepted and ignored (listed in the schema as such). `resilience4jConfiguration` maps to Polly:
@@ -1087,7 +1186,8 @@ Register built-in components in the `CaravanContext` static constructor. Backgro
 "Consumers: lifecycle, suspension and shutdown" above.
 
 Built-in components: `direct`, `seda` (and `vm`, its process-wide variant), `timer`, `scheduler`, `log`, `mock`, `saga`, `dataformat`, `bean`,
-`class`, `controlbus`, `stub`, `ref`, `dataset`, `dataset-test`, `browse`, `kamelet`, `file`.
+`class`, `controlbus`, `stub`, `ref`, `dataset`, `dataset-test`, `browse`, `kamelet`, `file`, `rest` (consumer only, served by an
+`IRestConsumerFactory`). `platform-http` comes with Caravan.AspNetCore.
 
 ### Consumers: lifecycle, suspension and shutdown
 
@@ -1147,6 +1247,8 @@ Other conventions:
   `Caravan.DataFormat` (built-in data formats and their registry), `Caravan.Streams` (stream caching),
   `Caravan.Observability` (tracing, metrics, message history, tracers), `Caravan.Management` (management API), `Caravan.Health` (health checks),
   `Caravan.Components.<Name>`; `Caravan.Testing` (the test kit project), `Caravan.Hosting` (Generic Host), `Caravan.OpenTelemetry`,
-  `Caravan.Dsl.Yaml` (YAML DSL; `Caravan.Dsl.Yaml.Catalog` holds the step catalog).
-- Tests: xUnit (`tests/Caravan.Core.Tests`, `tests/Caravan.Testing.Tests`, `tests/Caravan.Hosting.Tests`, `tests/Caravan.Dsl.Yaml.Tests`), one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
+  `Caravan.Dsl.Yaml` (YAML DSL; `Caravan.Dsl.Yaml.Catalog` holds the step catalog), `Caravan.Model.Rest` (REST DSL model), `Caravan.Components.Rest`,
+  `Caravan.AspNetCore` (ASP.NET Core; `Caravan.AspNetCore.OpenApi`).
+- Tests: xUnit (`tests/Caravan.Core.Tests`, `tests/Caravan.Testing.Tests`, `tests/Caravan.Hosting.Tests`, `tests/Caravan.Dsl.Yaml.Tests`,
+  `tests/Caravan.AspNetCore.Tests` — on `TestServer`, never a real port), one test class per feature, descriptive `Snake_case_names`. No sleeps where a mock
   expectation or `TimeProvider` can be used instead; keep the suite fast.

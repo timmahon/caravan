@@ -68,6 +68,50 @@ new RoutesLoader(context, new() { Watch = true }).Load("routes/**/*.yaml");   //
 builder.Services.AddCaravan().AddYamlRoutes("routes/*.yaml");                // Caravan.Hosting
 ```
 
+## REST services on ASP.NET Core
+
+The REST DSL (Camel's `rest`) describes HTTP services independently of the transport; `Caravan.AspNetCore` serves them, and plain
+`platform-http:` routes, as ASP.NET Core endpoints of a minimal-API application, binds JSON/XML bodies to your types and publishes an OpenAPI
+document.
+
+```csharp
+var builder = WebApplication.CreateBuilder(args);
+builder.Services.AddCaravan().AddAspNetCore().AddRoutes<OrderApi>();
+var app = builder.Build();
+app.MapCaravan(o => o.Management = true);   // REST + platform-http endpoints, /caravan/health, /caravan/management, OpenAPI
+app.Run();
+
+public sealed class OrderApi(IOrderStore store) : RouteBuilder
+{
+    public override void Configure()
+    {
+        RestConfiguration(c => c
+            .BindingMode(RestBindingMode.Json)      // request bodies -> Type, responses -> JSON
+            .ClientRequestValidation()              // 415 / 406 / 400 before your route runs
+            .ApiContextPath("/api-doc")             // OpenAPI 3.1 document
+            .ApiProperty("api.title", "Orders"));
+
+        Rest("/api/orders", r => r
+            .Get("/{id}", v => v.Produces("application/json").OutType<Order>()
+                .Param("id", RestParamType.Path, p => p.DataType("integer"))
+                .To("direct:getOrder"))
+            .Post(v => v.Type<Order>().OutType<Order>().To("direct:createOrder")));
+
+        From("direct:getOrder")                     // merged into the GET service (inlineRoutes)
+            .Process(e => e.Message.Body = store.Find(e.Message.GetHeader<int>("id")));
+        From("direct:createOrder")
+            .Process(e => e.Message.Body = store.Add(e.Message.GetBody<Order>()!))
+            .SetHeader(CaravanHeaders.HttpResponseCode, Expr.Constant(201));
+
+        From("platform-http:/hooks/{source}?httpMethodRestrict=POST")   // any route can be an HTTP endpoint
+            .To("seda:hooks");
+    }
+}
+```
+
+Starting or stopping a route adds or removes its endpoint at once; the same services can be written in YAML (`- rest:` /
+`- restConfiguration:`).
+
 ## Hosting and observability
 
 `Caravan.Hosting` runs a context in the .NET Generic Host: route builders come from dependency injection, options from the `Caravan`

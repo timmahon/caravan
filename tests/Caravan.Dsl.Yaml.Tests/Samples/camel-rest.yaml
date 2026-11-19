@@ -1,0 +1,71 @@
+# The REST DSL as Camel's documentation writes it.
+- restConfiguration:
+    component: platform-http
+    bindingMode: json
+    contextPath: /api
+    apiContextPath: /api-doc
+    enableCORS: true
+    apiProperty:
+      - key: api.title
+        value: User API
+      - key: api.version
+        value: "1.0"
+    dataFormatProperty:
+      - key: prettyPrint
+        value: "true"
+- rest:
+    path: /users
+    description: User rest service
+    consumes: application/json
+    produces: application/json
+    securityDefinitions:
+      basicAuth:
+        - key: basic
+          description: Basic authentication
+      apiKey:
+        - key: api_key
+          name: X-API-KEY
+          inHeader: true
+    get:
+      - path: "/{id}"
+        description: Find user by id
+        outType: Caravan.Dsl.Yaml.Tests.TestUser
+        param:
+          - name: id
+            type: path
+            description: The id of the user to get
+            dataType: integer
+        responseMessage:
+          - code: "200"
+            message: User of the given id
+          - code: "404"
+            message: User not found
+        security:
+          - key: basic
+        to: direct:getUser
+      - path: /findAll
+        description: Find all users
+        outType: "Caravan.Dsl.Yaml.Tests.TestUser[]"
+        param:
+          - name: status
+            type: query
+            required: false
+            defaultValue: active
+            allowableValues:
+              - value: active
+              - value: inactive
+        to:
+          uri: direct:findAll
+    put:
+      - path: "/{id}"
+        type: Caravan.Dsl.Yaml.Tests.TestUser
+        param:
+          - name: body
+            type: body
+            description: The user to update
+        to: direct:updateUser
+- from:
+    uri: direct:getUser
+    steps:
+      - setBody:
+          simple: "user ${header.id}"

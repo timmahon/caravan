@@ -45,6 +45,9 @@ public static class YamlDslSchema
             [TopLevelCatalog.RouteTemplate] = "routeTemplate",
             [TopLevelCatalog.TemplatedRoute] = "templatedRoute",
             [TopLevelCatalog.RouteConfiguration] = "routeConfiguration",
+            [RestCatalog.Rest] = "rest",
+            [RestCatalog.Verb] = "restVerb",
+            [RestCatalog.Configuration] = "restConfiguration",
         };
 
         private readonly JsonObject _definitions = [];

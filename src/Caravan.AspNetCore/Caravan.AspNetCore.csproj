@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>Caravan.AspNetCore</RootNamespace>
+    <Description>Caravan on ASP.NET Core: the platform-http component, the REST DSL served by ASP.NET Core endpoints, OpenAPI documents, and management and health endpoints.</Description>
+  </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Caravan.Core\Caravan.Core.csproj" />
+    <ProjectReference Include="..\Caravan.Hosting\Caravan.Hosting.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Caravan.AspNetCore.Tests" />
+  </ItemGroup>
+</Project>
