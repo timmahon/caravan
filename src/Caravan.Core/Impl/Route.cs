@@ -8,6 +8,9 @@ namespace Caravan.Impl;
 public sealed class Route : ServiceSupport, IRoute
 {
     private int _inflight;
+    private long _exchangesTotal;
+    private long _exchangesCompleted;
+    private long _exchangesFailed;
 
     internal Route(RouteContext routeContext, IEndpoint endpoint, IProcessor pipeline)
     {
@@ -40,9 +43,26 @@ public sealed class Route : ServiceSupport, IRoute
     /// <inheritdoc />
     public IDictionary<string, object?> Properties { get; } = new Dictionary<string, object?>(StringComparer.Ordinal);
 
-    internal void IncrementInflight() => Interlocked.Increment(ref _inflight);
+    /// <summary>The number of exchanges the route has processed or is processing (each entry counts, also through <c>direct</c>).</summary>
+    public long ExchangesTotal => Interlocked.Read(ref _exchangesTotal);
 
-    internal void DecrementInflight() => Interlocked.Decrement(ref _inflight);
+    /// <summary>The number of exchanges that left the route successfully.</summary>
+    public long ExchangesCompleted => Interlocked.Read(ref _exchangesCompleted);
+
+    /// <summary>The number of exchanges that left the route failed.</summary>
+    public long ExchangesFailed => Interlocked.Read(ref _exchangesFailed);
+
+    internal void IncrementInflight()
+    {
+        Interlocked.Increment(ref _inflight);
+        Interlocked.Increment(ref _exchangesTotal);
+    }
+
+    internal void DecrementInflight(bool failed)
+    {
+        Interlocked.Increment(ref failed ? ref _exchangesFailed : ref _exchangesCompleted);
+        Interlocked.Decrement(ref _inflight);
+    }
 
     /// <summary>Starts the route's services, then its consumer.</summary>
     protected override async Task DoStartAsync(CancellationToken cancellationToken)

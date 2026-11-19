@@ -21,6 +21,12 @@ public sealed class SimpleLanguage : ILanguage
     private static readonly LruCache<string, SimpleNode> Functions = new(DefaultCacheSize);
     private static readonly ConcurrentDictionary<string, Func<string, IExpression>> Custom = new(StringComparer.Ordinal);
 
+    /// <summary>Registers the built-in custom functions (<c>bean:</c>).</summary>
+    static SimpleLanguage()
+    {
+        RegisterFunction("bean", BeanExpression.Parse);
+    }
+
     /// <summary>The maximum number of compiled expressions (and of predicates) cached.</summary>
     public static int CacheSize
     {

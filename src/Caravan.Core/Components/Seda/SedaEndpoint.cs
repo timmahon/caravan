@@ -70,6 +70,12 @@ public sealed class SedaEndpoint : EndpointBase
 
     internal SedaQueue Queue { get; }
 
+    /// <summary>Whether unknown URI options are ignored (the <c>stub</c> component).</summary>
+    internal bool Lenient { get; init; }
+
+    /// <inheritdoc />
+    public override bool IsLenientProperties => Lenient;
+
     /// <summary>Removes all messages waiting in the queue.</summary>
     public void PurgeQueue() => Queue.Purge();
 

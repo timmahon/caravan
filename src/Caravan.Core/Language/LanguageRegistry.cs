@@ -18,6 +18,8 @@ public sealed class LanguageRegistry
         ["exchangeProperty"] = new ExchangePropertyLanguage(),
         ["tokenize"] = new TokenizeLanguage(),
         ["ref"] = new RefLanguage(),
+        ["bean"] = new BeanLanguage(),
+        ["method"] = new BeanLanguage(),
     };
 
     private readonly ConcurrentDictionary<string, ILanguage> _languages = new(StringComparer.OrdinalIgnoreCase);

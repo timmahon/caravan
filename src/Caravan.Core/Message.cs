@@ -104,11 +104,14 @@ public sealed class Message
         Headers = new Dictionary<string, object?>(headers, StringComparer.OrdinalIgnoreCase);
     }
 
-    /// <summary>Copies the body, headers and message id from another message.</summary>
+    /// <summary>
+    /// Copies the body, headers and message id from another message. A stream cache body (<see cref="Spi.IStreamCache"/>) is copied
+    /// into an independent reader over the same data.
+    /// </summary>
     public void CopyFrom(Message other)
     {
         MessageId = other.MessageId;
-        _body = other._body;
+        _body = other._body is Spi.IStreamCache cache ? cache.Copy() : other._body;
         Headers = new Dictionary<string, object?>(other.Headers, StringComparer.OrdinalIgnoreCase);
     }
 

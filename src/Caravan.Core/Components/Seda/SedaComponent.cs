@@ -31,6 +31,9 @@ public class SedaComponent : ComponentBase
     /// <summary>The URI scheme, used in queue keys and messages.</summary>
     protected virtual string Scheme => "seda";
 
+    /// <summary>Whether endpoints ignore unknown URI options (<c>stub</c>).</summary>
+    internal virtual bool LenientEndpoints => false;
+
     /// <summary>The queues by name; <c>vm</c> overrides it with a process-wide registry.</summary>
     internal virtual ConcurrentDictionary<string, SedaQueue> Queues => _queues;
 
@@ -55,6 +58,7 @@ public class SedaComponent : ComponentBase
             BlockWhenFull = DefaultBlockWhenFull,
             DiscardWhenFull = DefaultDiscardWhenFull,
             OfferTimeout = DefaultOfferTimeout,
+            Lenient = LenientEndpoints,
         };
     }
 

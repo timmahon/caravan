@@ -1,17 +1,26 @@
 using System.Collections.Concurrent;
 using Caravan.Builder;
+using Caravan.Components.Bean;
+using Caravan.Components.Browse;
+using Caravan.Components.ControlBus;
+using Caravan.Components.DataFormat;
+using Caravan.Components.DataSet;
 using Caravan.Components.Direct;
 using Caravan.Components.Log;
 using Caravan.Components.Mock;
+using Caravan.Components.Ref;
 using Caravan.Components.Saga;
 using Caravan.Components.Scheduler;
 using Caravan.Components.Seda;
+using Caravan.Components.Stub;
 using Caravan.Components.Timer;
+using Caravan.DataFormat;
 using Caravan.Impl;
 using Caravan.Language;
 using Caravan.Model;
 using Caravan.Processors;
 using Caravan.Spi;
+using Caravan.Streams;
 using Caravan.Support;
 using Caravan.TypeConversion;
 using Microsoft.Extensions.Configuration;
@@ -56,6 +65,15 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         RegisterGlobalComponent("timer", () => new TimerComponent());
         RegisterGlobalComponent("scheduler", () => new SchedulerComponent());
         RegisterGlobalComponent("saga", () => new SagaComponent());
+        RegisterGlobalComponent("dataformat", () => new DataFormatComponent());
+        RegisterGlobalComponent("bean", () => new BeanComponent());
+        RegisterGlobalComponent("class", () => new ClassComponent());
+        RegisterGlobalComponent("controlbus", () => new ControlBusComponent());
+        RegisterGlobalComponent("stub", () => new StubComponent());
+        RegisterGlobalComponent("ref", () => new RefComponent());
+        RegisterGlobalComponent("dataset", () => new DataSetComponent());
+        RegisterGlobalComponent("dataset-test", () => new DataSetTestComponent());
+        RegisterGlobalComponent("browse", () => new BrowseComponent());
     }
 
     /// <summary>Creates a context.</summary>
@@ -67,6 +85,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         Services = services;
         PropertiesComponent = new DefaultPropertiesComponent(PropertiesSources);
         Languages = new LanguageRegistry(this);
+        DataFormats = new DataFormatRegistry(this);
         if (services?.GetService(typeof(IConfiguration)) is IConfiguration configuration)
         {
             PropertiesComponent.AddConfiguration(configuration);
@@ -125,6 +144,15 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
     /// <inheritdoc />
     public ILanguage ResolveLanguage(string name) => Languages.Resolve(name);
+
+    /// <inheritdoc />
+    public DataFormatRegistry DataFormats { get; }
+
+    /// <inheritdoc />
+    public IDataFormat ResolveDataFormat(string name) => DataFormats.Resolve(name);
+
+    /// <inheritdoc />
+    public StreamCachingStrategy StreamCaching { get; } = new();
 
     /// <inheritdoc cref="ICaravanContext.InflightRepository" />
     /// <remarks>Can be replaced before the context starts.</remarks>
@@ -654,6 +682,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             _routes.Clear();
         }
 
+        StreamCaching.Stop();
         EventHelper.Notify(this, CaravanEventType.ContextStopped);
     }
 

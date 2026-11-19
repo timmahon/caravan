@@ -344,7 +344,6 @@ public class SimpleFunctionTests : SimpleTestBase
         }
 
         Assert.Throws<SimpleParseException>(() => Eval("${upper:abc}"));
-        var bean = Assert.Throws<SimpleParseException>(() => Eval("${bean:foo?method=bar}"));
-        Assert.Contains("bean:", bean.Message, StringComparison.Ordinal);
+        Assert.Throws<SimpleParseException>(() => Eval("${bean:foo?method=bar(}"));
     }
 }

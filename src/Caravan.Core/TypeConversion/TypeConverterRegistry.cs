@@ -131,6 +131,8 @@ public sealed class TypeConverterRegistry : ITypeConverter
         AddConverter<string, DateTimeOffset>(s => DateTimeOffset.Parse(s, CultureInfo.InvariantCulture));
         AddConverter<string, DateTime>(s => DateTime.Parse(s, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind));
         AddConverter<string, bool>(ParseBool);
+        AddConverter<string, char>(s => s.Length == 1 ? s[0] : throw new FormatException($"'{s}' is not a single character"));
+        AddConverter<string, Type>(s => Language.Simple.TypeNameResolver.Resolve(s) ?? throw new FormatException($"Unknown type: {s}"));
     }
 
     private bool TryBuiltInFallback(Type target, Exchange? exchange, object value, out object? result)
@@ -233,6 +235,16 @@ public sealed class TypeConverterRegistry : ITypeConverter
 
     private static byte[] ReadAllBytes(Stream stream)
     {
+        if (stream is Spi.IStreamCache cache)
+        {
+            // A stream cache is read from the start and reset, so that it can be read again.
+            cache.Reset();
+            using var copy = new MemoryStream();
+            stream.CopyTo(copy);
+            cache.Reset();
+            return copy.ToArray();
+        }
+
         if (stream is MemoryStream ms && ms.Position == 0)
         {
             return ms.ToArray();

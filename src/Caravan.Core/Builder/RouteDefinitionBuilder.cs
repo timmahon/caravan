@@ -70,6 +70,16 @@ public sealed class RouteDefinitionBuilder : RouteSteps
         return this;
     }
 
+    /// <summary>
+    /// Enables or disables stream caching for the route (Camel's <c>streamCache</c> route option), overriding the context's
+    /// <see cref="Streams.StreamCachingStrategy.Enabled"/>.
+    /// </summary>
+    public RouteDefinitionBuilder StreamCaching(bool enabled = true)
+    {
+        Definition.StreamCaching = enabled;
+        return this;
+    }
+
     /// <summary>Sets an arbitrary route property.</summary>
     public RouteDefinitionBuilder RouteProperty(string key, object? value)
     {

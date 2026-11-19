@@ -30,7 +30,7 @@ public class SimpleParseErrorTests : SimpleTestBase
     [InlineData("${uuid:nope}", 2)]
     [InlineData("${properties:}", 2)]
     [InlineData("${type:NoDot}", 2)]
-    [InlineData("${bean:foo}", 2)]
+    [InlineData("${bean:foo?nope=1}", 2)]
     [InlineData("${header.foo > }", 13)]
     [InlineData("${header.foo ? 'a'}", 13)]
     [InlineData("${header.foo ? : 'b'}", 13)]

@@ -32,4 +32,13 @@ public static class CaravanHeaders
     /// (Camel's <c>Exchange.INTERCEPTED_ENDPOINT</c>; <c>interceptFrom</c> also sets it as an exchange property).
     /// </summary>
     public const string InterceptedEndpoint = "CaravanInterceptedEndpoint";
+
+    /// <summary>The media type of the body (Camel's <c>Exchange.CONTENT_TYPE</c>), set by <c>marshal</c> with data formats such as <c>json</c>.</summary>
+    public const string ContentType = "Content-Type";
+
+    /// <summary>The type to unmarshal JSON to, when the <c>json</c> data format allows it (Camel's <c>CamelJacksonUnmarshalType</c>).</summary>
+    public const string JsonUnmarshalType = "CaravanJacksonUnmarshalType";
+
+    /// <summary>The index of a message produced by a <c>dataset</c> endpoint (Camel's <c>CamelDataSetIndex</c>).</summary>
+    public const string DataSetIndex = "CaravanDataSetIndex";
 }

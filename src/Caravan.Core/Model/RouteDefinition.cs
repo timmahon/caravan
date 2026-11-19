@@ -40,6 +40,12 @@ public sealed class RouteDefinition
     /// <summary>The name of the group the route belongs to.</summary>
     public string? Group { get; set; }
 
+    /// <summary>
+    /// Whether the route caches stream bodies (see <see cref="Streams.StreamCachingStrategy"/>); null (default) follows the context's
+    /// <see cref="Streams.StreamCachingStrategy.Enabled"/>.
+    /// </summary>
+    public bool? StreamCaching { get; set; }
+
     /// <summary>Arbitrary route properties.</summary>
     public Dictionary<string, object?> Properties { get; } = new(StringComparer.Ordinal);
 
