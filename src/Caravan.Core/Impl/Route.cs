@@ -8,15 +8,13 @@ namespace Caravan.Impl;
 public sealed class Route : ServiceSupport, IRoute
 {
     private int _inflight;
-    private long _exchangesTotal;
-    private long _exchangesCompleted;
-    private long _exchangesFailed;
 
     internal Route(RouteContext routeContext, IEndpoint endpoint, IProcessor pipeline)
     {
         RouteContext = routeContext;
         Endpoint = endpoint;
         Processor = new RouteProcessor(this, pipeline);
+        TelemetryInfo = new Observability.EndpointTelemetryInfo(endpoint);
     }
 
     /// <inheritdoc />
@@ -44,29 +42,39 @@ public sealed class Route : ServiceSupport, IRoute
     public IDictionary<string, object?> Properties { get; } = new Dictionary<string, object?>(StringComparer.Ordinal);
 
     /// <summary>The number of exchanges the route has processed or is processing (each entry counts, also through <c>direct</c>).</summary>
-    public long ExchangesTotal => Interlocked.Read(ref _exchangesTotal);
+    public long ExchangesTotal => RouteContext.Counters.Total;
 
     /// <summary>The number of exchanges that left the route successfully.</summary>
-    public long ExchangesCompleted => Interlocked.Read(ref _exchangesCompleted);
+    public long ExchangesCompleted => RouteContext.Counters.Completed;
 
     /// <summary>The number of exchanges that left the route failed.</summary>
-    public long ExchangesFailed => Interlocked.Read(ref _exchangesFailed);
+    public long ExchangesFailed => RouteContext.Counters.Failed;
 
-    internal void IncrementInflight()
+    /// <summary>When the route was last started; null while it is not started.</summary>
+    internal DateTimeOffset? StartedAt { get; private set; }
+
+    /// <summary>What spans show about the route's endpoint.</summary>
+    internal Observability.EndpointTelemetryInfo TelemetryInfo { get; }
+
+    /// <summary>The usage of the route's endpoint (management).</summary>
+    internal Management.EndpointUsage? EndpointUsage { get; init; }
+
+    internal void IncrementInflight(DateTimeOffset now)
     {
         Interlocked.Increment(ref _inflight);
-        Interlocked.Increment(ref _exchangesTotal);
+        RouteContext.Counters.Begin(now);
     }
 
-    internal void DecrementInflight(bool failed)
+    internal void DecrementInflight(bool failed, TimeSpan elapsed, DateTimeOffset now)
     {
-        Interlocked.Increment(ref failed ? ref _exchangesFailed : ref _exchangesCompleted);
+        RouteContext.Counters.End(elapsed, failed, now);
         Interlocked.Decrement(ref _inflight);
     }
 
     /// <summary>Starts the route's services, then its consumer.</summary>
     protected override async Task DoStartAsync(CancellationToken cancellationToken)
     {
+        StartedAt = null;
         foreach (var service in RouteContext.Services)
         {
             await StartServiceAsync(service, cancellationToken).ConfigureAwait(false);
@@ -75,11 +83,13 @@ public sealed class Route : ServiceSupport, IRoute
         await Endpoint.StartAsync(cancellationToken).ConfigureAwait(false);
         Consumer = Endpoint.CreateConsumer(Processor);
         await Consumer.StartAsync(cancellationToken).ConfigureAwait(false);
+        StartedAt = RouteContext.Context.TimeProvider.GetUtcNow();
     }
 
     /// <summary>Stops the consumer first, then the route's services in reverse order.</summary>
     protected override async Task DoStopAsync(CancellationToken cancellationToken)
     {
+        StartedAt = null;
         if (Consumer is not null)
         {
             await Consumer.StopAsync(cancellationToken).ConfigureAwait(false);

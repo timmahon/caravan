@@ -211,6 +211,7 @@ public sealed class Exchange
         };
         copy._message = _message.Copy(copy);
         copy.Properties = new Dictionary<string, object?>(Properties, StringComparer.Ordinal);
+        Observability.MessageHistoryRecorder.CopyInto(copy);
         return copy;
     }
 

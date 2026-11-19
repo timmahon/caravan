@@ -66,6 +66,9 @@ public sealed class RedeliveryPolicyDefinition
     /// <summary>See <see cref="RedeliveryPolicy.LogExhaustedExchange"/>.</summary>
     public bool? LogExhaustedExchange { get; set; }
 
+    /// <summary>See <see cref="RedeliveryPolicy.LogExhaustedMessageHistory"/>.</summary>
+    public bool? LogExhaustedMessageHistory { get; set; }
+
     /// <summary>Whether these options allow redelivery (a maximum other than 0 is set).</summary>
     public bool EnablesRedelivery => MaximumRedeliveries is { } max && max != 0;
 
@@ -92,6 +95,7 @@ public sealed class RedeliveryPolicyDefinition
         policy.LogRetryStackTrace = LogRetryStackTrace ?? policy.LogRetryStackTrace;
         policy.LogNewException = LogNewException ?? policy.LogNewException;
         policy.LogExhaustedExchange = LogExhaustedExchange ?? policy.LogExhaustedExchange;
+        policy.LogExhaustedMessageHistory = LogExhaustedMessageHistory ?? policy.LogExhaustedMessageHistory;
         return policy;
     }
 }

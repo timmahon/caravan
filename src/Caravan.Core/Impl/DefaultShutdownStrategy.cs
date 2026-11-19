@@ -25,11 +25,35 @@ public sealed class DefaultShutdownStrategy : IShutdownStrategy
     /// <inheritdoc />
     public TimeSpan Timeout { get; set; } = TimeSpan.FromSeconds(45);
 
+    private CancellationTokenSource? _forceNow;
+    private volatile bool _forceRequested;
+
     /// <inheritdoc />
     public bool LogInflightExchangesOnTimeout { get; set; } = true;
 
     /// <inheritdoc />
     public bool HasTimeoutOccurred { get; private set; }
+
+    /// <summary>
+    /// Forces the graceful shutdown (or suspension) in progress, and those started until <see cref="ResetForcedShutdown"/>, as if the timeout
+    /// had elapsed: shutdown-aware consumers and services are forced and, on context stop, <see cref="ICaravanContext.ShutdownToken"/> is
+    /// cancelled. Used by the hosted service when the host's shutdown token fires before the graceful shutdown ends.
+    /// </summary>
+    public void ForceShutdown()
+    {
+        _forceRequested = true;
+        try
+        {
+            Volatile.Read(ref _forceNow)?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The run ended meanwhile.
+        }
+    }
+
+    /// <summary>Ends the effect of <see cref="ForceShutdown"/> for later shutdowns.</summary>
+    public void ResetForcedShutdown() => _forceRequested = false;
 
     /// <inheritdoc />
     public Task<bool> ShutdownAsync(ICaravanContext context, IReadOnlyList<IRoute> routes, TimeSpan? timeout = null, CancellationToken cancellationToken = default) =>
@@ -49,16 +73,24 @@ public sealed class DefaultShutdownStrategy : IShutdownStrategy
 
         var logger = context.LoggerFactory.CreateLogger<DefaultShutdownStrategy>();
         using var force = new CancellationTokenSource();
+        using var forceNow = new CancellationTokenSource();
+        _forceNow = forceNow;
+        if (_forceRequested)
+        {
+            forceNow.Cancel();
+        }
+
+        using var wait = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, forceNow.Token);
         var work = RunPhasesAsync(context, routes, suspendOnly, logger, force.Token, cancellationToken);
         try
         {
             if (timeout > TimeSpan.Zero)
             {
-                await work.WaitAsync(timeout, context.TimeProvider, cancellationToken).ConfigureAwait(false);
+                await work.WaitAsync(timeout, context.TimeProvider, wait.Token).ConfigureAwait(false);
             }
             else
             {
-                await work.WaitAsync(cancellationToken).ConfigureAwait(false);
+                await work.WaitAsync(wait.Token).ConfigureAwait(false);
             }
 
             return true;
@@ -66,6 +98,15 @@ public sealed class DefaultShutdownStrategy : IShutdownStrategy
         catch (TimeoutException)
         {
             HasTimeoutOccurred = true;
+        }
+        catch (OperationCanceledException) when (forceNow.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+        {
+            // ForceShutdown(): e.g. the host's shutdown timeout elapsed first.
+            HasTimeoutOccurred = true;
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref _forceNow, null, forceNow);
         }
 
         var verb = suspendOnly ? "suspend" : "shutdown";

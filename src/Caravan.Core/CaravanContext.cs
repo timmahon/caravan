@@ -18,6 +18,7 @@ using Caravan.Components.Timer;
 using Caravan.DataFormat;
 using Caravan.Impl;
 using Caravan.Language;
+using Caravan.Management;
 using Caravan.Model;
 using Caravan.Processors;
 using Caravan.Spi;
@@ -55,6 +56,7 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     private readonly List<Route> _routes = [];
     private readonly List<object> _services = [];
     private readonly object _routesLock = new();
+    private readonly DefaultManagementService _management;
     private CancellationTokenSource _shutdown = new();
     private int _routeCounter;
 
@@ -90,6 +92,8 @@ public class CaravanContext : ServiceSupport, ICaravanContext
         PropertiesComponent = new DefaultPropertiesComponent(PropertiesSources);
         Languages = new LanguageRegistry(this);
         DataFormats = new DataFormatRegistry(this);
+        _management = new DefaultManagementService(this);
+        HealthChecks = new Health.HealthCheckRegistry(this);
         if (services?.GetService(typeof(IConfiguration)) is IConfiguration configuration)
         {
             PropertiesComponent.AddConfiguration(configuration);
@@ -178,6 +182,34 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     /// <inheritdoc />
     public StreamCachingStrategy StreamCaching { get; } = new();
 
+    /// <inheritdoc />
+    public Observability.TelemetryOptions Telemetry { get; } = new();
+
+    /// <inheritdoc />
+    public bool Tracing
+    {
+        get => Tracer.Enabled;
+        set => Tracer.Enabled = value;
+    }
+
+    /// <inheritdoc />
+    public Observability.CaravanTracer Tracer { get; } = new();
+
+    /// <inheritdoc />
+    public Observability.BacklogTracer BacklogTracer { get; } = new();
+
+    /// <inheritdoc />
+    public bool MessageHistory { get; set; }
+
+    /// <inheritdoc />
+    public IManagementService Management => _management;
+
+    /// <inheritdoc />
+    public Health.HealthCheckRegistry HealthChecks { get; }
+
+    /// <summary>When the context was last started; null while it is not started.</summary>
+    internal DateTimeOffset? StartedAt { get; private set; }
+
     /// <inheritdoc cref="ICaravanContext.InflightRepository" />
     /// <remarks>Can be replaced before the context starts.</remarks>
     public IInflightRepository InflightRepository { get; set; } = new DefaultInflightRepository();
@@ -237,6 +269,9 @@ public class CaravanContext : ServiceSupport, ICaravanContext
 
         return created;
     }
+
+    /// <summary>The component created for <paramref name="scheme"/>, without creating one.</summary>
+    internal IComponent? FindCreatedComponent(string scheme) => _components.GetValueOrDefault(scheme);
 
     /// <inheritdoc />
     public T GetComponent<T>(string scheme)
@@ -776,10 +811,16 @@ public class CaravanContext : ServiceSupport, ICaravanContext
                 routeContext.InterceptStrategies.Add(intercept);
             }
 
+            if (Observability.NodeInstrumentationStrategy.Create(this) is { } instrumentation)
+            {
+                // Outermost: node statistics and history cover intercept blocks and error handling.
+                routeContext.InterceptStrategies.Insert(0, instrumentation);
+            }
+
             var pipeline = routeContext.CreateBlockProcessor(definition.Outputs);
             pipeline = InterceptFromProcessor.Wrap(routeContext, endpoint, pipeline);
             pipeline = OnCompletionProcessor.Wrap(routeContext, pipeline);
-            var route = new Route(routeContext, endpoint, pipeline);
+            var route = new Route(routeContext, endpoint, pipeline) { EndpointUsage = _management.GetUsage(endpoint) };
             lock (_routesLock)
             {
                 _routes.Add(route);
@@ -867,6 +908,8 @@ public class CaravanContext : ServiceSupport, ICaravanContext
             }
         }
 
+        StartedAt = TimeProvider.GetUtcNow();
+        Observability.CaravanMetrics.Register(this);
         EventHelper.Notify(this, CaravanEventType.ContextStarted);
     }
 
@@ -877,6 +920,8 @@ public class CaravanContext : ServiceSupport, ICaravanContext
     protected override async Task DoStopAsync(CancellationToken cancellationToken)
     {
         EventHelper.Notify(this, CaravanEventType.ContextStopping);
+        Observability.CaravanMetrics.Unregister(this);
+        StartedAt = null;
 
         if (SupervisingRouteController is { } supervisor)
         {
